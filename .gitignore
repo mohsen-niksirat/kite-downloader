@@ -3,3 +3,4 @@ src-tauri/target/
 dist/
 .DS_Store
 *.log
+src-tauri/gen/

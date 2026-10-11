@@ -8,6 +8,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
 
+pub mod hls;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadItem {
@@ -36,7 +38,7 @@ fn default_dir() -> PathBuf {
     dirs::download_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Downloads"))
 }
 
-fn sanitize_filename(name: &str) -> String {
+pub(crate) fn sanitize_filename(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
@@ -49,7 +51,7 @@ fn sanitize_filename(name: &str) -> String {
     }
 }
 
-fn filename_from_url(url: &str, headers: &HashMap<String, String>) -> String {
+pub(crate) fn filename_from_url(url: &str, headers: &HashMap<String, String>) -> String {
     if let Some(cd) = headers.get("content-disposition") {
         // filename*=UTF-8''name or filename="name"
         if let Some(idx) = cd.find("filename*=") {
@@ -334,7 +336,11 @@ async fn add_download(
     state.controls.lock().await.insert(id, tx);
     state.items.lock().await.insert(item.id.clone(), item.clone());
 
-    tauri::async_runtime::spawn(run_download(app, item.clone(), rx));
+    if hls::is_hls_url(&item.url) {
+        tauri::async_runtime::spawn(hls::run_hls_download(app, item.clone(), rx));
+    } else {
+        tauri::async_runtime::spawn(run_download(app, item.clone(), rx));
+    }
     Ok(item)
 }
 

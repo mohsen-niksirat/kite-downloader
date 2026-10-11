@@ -18,3 +18,7 @@ futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 chrono = "0.4"
+url = "2"
+m3u8-rs = "5"
+regex = "1"
+tiny_http = "0.12"

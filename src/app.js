@@ -13,7 +13,8 @@ const I18N = {
     stat_active: "Active", stat_done: "Completed", stat_speed: "Speed",
     pause: "Pause", resume: "Resume", cancel: "Cancel", remove: "Remove",
     invalid_url: "Please enter a valid URL (http/https).",
-    starting: "Starting…"
+    starting: "Starting…",
+    segments: "segments"
   },
   fa: {
     nav_downloads: "دانلودها", nav_settings: "تنظیمات", nav_about: "درباره", nav_theme: "تم",
@@ -25,7 +26,8 @@ const I18N = {
     stat_active: "فعال", stat_done: "کامل‌شده", stat_speed: "سرعت",
     pause: "توقف", resume: "ادامه", cancel: "لغو", remove: "حذف",
     invalid_url: "لطفاً یک آدرس معتبر (http/https) وارد کنید.",
-    starting: "در حال شروع…"
+    starting: "در حال شروع…",
+    segments: "بخش"
   },
   de: {
     nav_downloads: "Downloads", nav_settings: "Einstellungen", nav_about: "Über", nav_theme: "Design",
@@ -37,7 +39,8 @@ const I18N = {
     stat_active: "Aktiv", stat_done: "Fertig", stat_speed: "Tempo",
     pause: "Pause", resume: "Fortsetzen", cancel: "Abbrechen", remove: "Entfernen",
     invalid_url: "Bitte eine gültige URL (http/https) eingeben.",
-    starting: "Starte…"
+    starting: "Starte…",
+    segments: "Segmente"
   }
 };
 
@@ -100,7 +103,10 @@ function render() {
     el.className = "glass-card dl-item";
     const badge = `<span class="badge ${it.status}">${it.status}</span>`;
     const err = it.error ? `<div class="dl-meta" style="color:var(--err)">⚠ ${it.error}</div>` : "";
-    const sizeTxt = it.totalBytes > 0 ? `${fmtBytes(it.downloadedBytes)} / ${fmtBytes(it.totalBytes)} (${pct.toFixed(1)}%)` : fmtBytes(it.downloadedBytes);
+    const isHls = it.url && (it.url.includes(".m3u8") || (it.filename && (it.filename.endsWith(".ts") || it.filename.endsWith(".mp4")) && it.totalBytes < 50000 && !it.totalBytes.toString().includes("000000")));
+    const sizeTxt = isHls
+      ? (it.totalBytes > 0 ? `${it.downloadedBytes} / ${it.totalBytes} ${t.segments} (${pct.toFixed(1)}%)` : `${it.downloadedBytes} ${t.segments}`)
+      : (it.totalBytes > 0 ? `${fmtBytes(it.downloadedBytes)} / ${fmtBytes(it.totalBytes)} (${pct.toFixed(1)}%)` : fmtBytes(it.downloadedBytes));
     let actions = "";
     if (it.status === "downloading" || it.status === "queued") {
       actions += `<button class="icon-btn" data-act="pause" data-id="${it.id}" title="${t.pause}">⏸</button>`;
