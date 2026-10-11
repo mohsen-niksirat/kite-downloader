@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 pub mod hls;
 pub mod server;
+pub mod scanner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -438,6 +439,11 @@ fn toggle_server(app: AppHandle, state: State<'_, DownloadManager>, enable: bool
     Ok(state.server.status())
 }
 
+#[tauri::command]
+async fn scan_page(url: String) -> Result<Vec<scanner::ScannedMedia>, String> {
+    scanner::scan_page_links(&url).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn run() {
     tauri::Builder::default()
@@ -457,7 +463,8 @@ fn run() {
             get_default_dir,
             format_bytes,
             get_server_status,
-            toggle_server
+            toggle_server,
+            scan_page
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

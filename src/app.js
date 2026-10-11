@@ -19,7 +19,24 @@ const I18N = {
     receiver_desc: "Accept downloads from browser extension",
     receiver_active: "Active",
     receiver_inactive: "Inactive",
-    receiver_port: "Port"
+    receiver_port: "Port",
+    tab_direct: "Direct Link",
+    tab_scan: "Deep Scan",
+    btn_scan: "Scan",
+    scan_ph: "Paste webpage URL to deep scan for media...",
+    scanning: "Scanning page…",
+    scan_modal_title: "Discovered Links",
+    select_all: "Select All",
+    download_selected: "Download Selected",
+    no_links_found: "No media links found on this page.",
+    filter_all: "All",
+    filter_video: "Videos",
+    filter_stream: "Streams",
+    filter_audio: "Audio",
+    filter_archive: "Archives",
+    filter_doc: "Documents",
+    filter_img: "Images",
+    selected_count: "selected"
   },
   fa: {
     nav_downloads: "دانلودها", nav_settings: "تنظیمات", nav_about: "درباره", nav_theme: "تم",
@@ -37,7 +54,24 @@ const I18N = {
     receiver_desc: "دریافت مستقیم لینک‌ها از افزونه مرورگر",
     receiver_active: "فعال",
     receiver_inactive: "غیرفعال",
-    receiver_port: "پورت"
+    receiver_port: "پورت",
+    tab_direct: "لینک مستقیم",
+    tab_scan: "اسکن صفحه",
+    btn_scan: "اسکن",
+    scan_ph: "آدرس صفحه وب را برای اسکن فایل‌ها وارد کنید...",
+    scanning: "در حال بررسی صفحه…",
+    scan_modal_title: "لینک‌های پیدا شده",
+    select_all: "انتخاب همه",
+    download_selected: "دانلود موارد انتخابی",
+    no_links_found: "هیچ فایل یا رسانه‌ای در این صفحه یافت نشد.",
+    filter_all: "همه",
+    filter_video: "ویدیوها",
+    filter_stream: "استریم‌ها",
+    filter_audio: "صوتی",
+    filter_archive: "فشرده",
+    filter_doc: "اسناد",
+    filter_img: "تصاویر",
+    selected_count: "انتخاب‌شده"
   },
   de: {
     nav_downloads: "Downloads", nav_settings: "Einstellungen", nav_about: "Über", nav_theme: "Design",
@@ -55,7 +89,24 @@ const I18N = {
     receiver_desc: "Downloads von Browser-Erweiterung empfangen",
     receiver_active: "Aktiv",
     receiver_inactive: "Inaktiv",
-    receiver_port: "Port"
+    receiver_port: "Port",
+    tab_direct: "Direkter Link",
+    tab_scan: "Deep Scan",
+    btn_scan: "Scannen",
+    scan_ph: "Webseiten-URL eingeben, um nach Medien zu scannen...",
+    scanning: "Seite wird gescannt…",
+    scan_modal_title: "Gefundene Links",
+    select_all: "Alle auswählen",
+    download_selected: "Ausgewählte herunterladen",
+    no_links_found: "Keine Mediendateien auf dieser Seite gefunden.",
+    filter_all: "Alle",
+    filter_video: "Videos",
+    filter_stream: "Streams",
+    filter_audio: "Audio",
+    filter_archive: "Archive",
+    filter_doc: "Dokumente",
+    filter_img: "Bilder",
+    selected_count: "ausgewählt"
   }
 };
 
@@ -184,6 +235,19 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+$("#tab-direct-btn").addEventListener("click", () => {
+  $("#tab-direct-btn").classList.add("active");
+  $("#tab-scan-btn").classList.remove("active");
+  $("#row-direct").classList.remove("hidden");
+  $("#row-scan").classList.add("hidden");
+});
+$("#tab-scan-btn").addEventListener("click", () => {
+  $("#tab-scan-btn").classList.add("active");
+  $("#tab-direct-btn").classList.remove("active");
+  $("#row-scan").classList.remove("hidden");
+  $("#row-direct").classList.add("hidden");
+});
+
 $("#add-btn").addEventListener("click", async () => {
   const url = $("#url-input").value.trim();
   if (!/^https?:\/\//i.test(url)) { alert(I18N[lang].invalid_url); return; }
@@ -196,6 +260,120 @@ $("#add-btn").addEventListener("click", async () => {
 });
 
 $("#url-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#add-btn").click(); });
+
+let scannedItems = [];
+let currentFilter = "all";
+let selectedScanUrls = new Set();
+
+function renderScanModal() {
+  const list = $("#scan-results-list");
+  const filtered = scannedItems.filter(item => {
+    if (currentFilter === "all") return true;
+    return item.mediaType === currentFilter;
+  });
+
+  $("#scan-count-badge").textContent = String(scannedItems.length);
+  $("#scan-selected-count").textContent = `${selectedScanUrls.size} ${I18N[lang].selected_count}`;
+
+  list.innerHTML = "";
+  if (filtered.length === 0) {
+    list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--muted)">${I18N[lang].no_links_found}</div>`;
+    return;
+  }
+
+  filtered.forEach(item => {
+    const el = document.createElement("div");
+    el.className = "scan-item";
+    const isChecked = selectedScanUrls.has(item.url);
+    el.innerHTML = `
+      <input type="checkbox" class="scan-item-chk" ${isChecked ? "checked" : ""} />
+      <div class="scan-item-info">
+        <div style="display:flex; align-items:center; gap:8px">
+          <span class="scan-item-name">${escapeHtml(item.filename)}</span>
+          <span class="badge ${item.mediaType}">${item.mediaType}</span>
+        </div>
+        <div class="scan-item-url">${escapeHtml(item.url)}</div>
+      </div>
+    `;
+    el.addEventListener("click", (e) => {
+      const chk = el.querySelector(".scan-item-chk");
+      if (e.target !== chk) {
+        chk.checked = !chk.checked;
+      }
+      if (chk.checked) selectedScanUrls.add(item.url);
+      else selectedScanUrls.delete(item.url);
+      $("#scan-select-all").checked = selectedScanUrls.size === scannedItems.length;
+      $("#scan-selected-count").textContent = `${selectedScanUrls.size} ${I18N[lang].selected_count}`;
+    });
+    list.appendChild(el);
+  });
+}
+
+$("#scan-btn").addEventListener("click", async () => {
+  const url = $("#scan-input").value.trim();
+  if (!/^https?:\/\//i.test(url)) { alert(I18N[lang].invalid_url); return; }
+  const btn = $("#scan-btn");
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = I18N[lang].scanning;
+  try {
+    const results = await invoke("scan_page", { url });
+    scannedItems = results || [];
+    selectedScanUrls = new Set(scannedItems.map(i => i.url));
+    $("#scan-select-all").checked = true;
+    currentFilter = "all";
+    document.querySelectorAll(".filter-pill").forEach(p => p.classList.toggle("active", p.dataset.filter === "all"));
+    renderScanModal();
+    $("#scan-modal").classList.remove("hidden");
+  } catch (err) {
+    alert(String(err));
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+});
+
+$("#scan-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#scan-btn").click(); });
+
+$("#close-scan-modal-btn").addEventListener("click", () => $("#scan-modal").classList.add("hidden"));
+$("#scan-cancel-btn").addEventListener("click", () => $("#scan-modal").classList.add("hidden"));
+
+$("#scan-select-all").addEventListener("change", (e) => {
+  if (e.target.checked) {
+    scannedItems.forEach(i => selectedScanUrls.add(i.url));
+  } else {
+    selectedScanUrls.clear();
+  }
+  renderScanModal();
+});
+
+document.querySelectorAll(".filter-pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
+    pill.classList.add("active");
+    currentFilter = pill.dataset.filter;
+    renderScanModal();
+  });
+});
+
+$("#scan-download-btn").addEventListener("click", async () => {
+  const toDownload = scannedItems.filter(i => selectedScanUrls.has(i.url));
+  if (toDownload.length === 0) return;
+  $("#scan-modal").classList.add("hidden");
+  for (const item of toDownload) {
+    try {
+      const dl = await invoke("add_download", {
+        url: item.url,
+        filename: item.filename,
+        directory: defaultDir
+      });
+      items[dl.id] = dl;
+    } catch (err) {
+      console.error("Failed to add", item.url, err);
+    }
+  }
+  render();
+});
 
 $("#clear-btn").addEventListener("click", async () => {
   const finished = Object.values(items).filter((i) => ["completed", "canceled", "error"].includes(i.status));
