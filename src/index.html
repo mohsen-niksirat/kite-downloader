@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Kite Downloader</title>
+<link rel="icon" type="image/png" href="icon.png" />
 <style>
 :root {
   --bg: #0d1117; --bg2: rgba(255,255,255,0.04); --card: rgba(255,255,255,0.06);
@@ -35,6 +36,7 @@ body {
   background: var(--glass); backdrop-filter: blur(24px); border-right:1px solid var(--border);
 }
 .logo { display:flex; align-items:center; gap:10px; font-size:20px; font-weight:700; padding: 8px 10px 20px; }
+.logo .kite-logo-img { width: 28px; height: 28px; border-radius: 8px; box-shadow: 0 0 10px rgba(56,189,248,0.35); flex-shrink: 0; }
 .logo .kite-ico { font-size: 26px; }
 .nav-btn {
   display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:12px; cursor:pointer;
@@ -160,7 +162,7 @@ select {
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="logo"><span class="kite-ico">🪁</span> Kite</div>
+    <div class="logo"><img src="icon.png" alt="Kite" class="kite-logo-img" /> <span>Kite</span></div>
     <div class="nav-btn active" data-page="downloads">📥 <span data-i18n="nav_downloads">Downloads</span></div>
     <div class="nav-btn" data-page="settings">⚙️ <span data-i18n="nav_settings">Settings</span></div>
     <div class="nav-btn" data-page="about">ℹ️ <span data-i18n="nav_about">About</span></div>
@@ -265,9 +267,14 @@ select {
     <!-- About page -->
     <section id="page-about" class="hidden">
       <div class="glass-card">
-        <h2>🪁 <span data-i18n="nav_about">About</span></h2>
+        <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+          <img src="icon.png" alt="Kite" style="width:64px; height:64px; border-radius:16px; box-shadow:0 8px 24px rgba(0,0,0,0.35); object-fit:cover;" />
+          <div>
+            <h2 style="margin-bottom:4px">Kite Downloader</h2>
+            <span class="badge completed">v0.1.0</span>
+          </div>
+        </div>
         <div class="about-body">
-          <p><b>Kite Downloader v0.1.0</b></p>
           <p data-i18n="about_text">A fast, lightweight download manager built with Rust + Tauri. Native performance, tiny memory footprint, glassmorphism UI.</p>
           <p>🔗 <a href="https://github.com/mohsen-niksirat/kite-downloader">github.com/mohsen-niksirat/kite-downloader</a></p>
         </div>
