@@ -14,7 +14,12 @@ const I18N = {
     pause: "Pause", resume: "Resume", cancel: "Cancel", remove: "Remove",
     invalid_url: "Please enter a valid URL (http/https).",
     starting: "Starting…",
-    segments: "segments"
+    segments: "segments",
+    link_receiver_title: "Native link receiver",
+    receiver_desc: "Accept downloads from browser extension",
+    receiver_active: "Active",
+    receiver_inactive: "Inactive",
+    receiver_port: "Port"
   },
   fa: {
     nav_downloads: "دانلودها", nav_settings: "تنظیمات", nav_about: "درباره", nav_theme: "تم",
@@ -27,7 +32,12 @@ const I18N = {
     pause: "توقف", resume: "ادامه", cancel: "لغو", remove: "حذف",
     invalid_url: "لطفاً یک آدرس معتبر (http/https) وارد کنید.",
     starting: "در حال شروع…",
-    segments: "بخش"
+    segments: "بخش",
+    link_receiver_title: "دریافت‌کننده نیتیو لینک",
+    receiver_desc: "دریافت مستقیم لینک‌ها از افزونه مرورگر",
+    receiver_active: "فعال",
+    receiver_inactive: "غیرفعال",
+    receiver_port: "پورت"
   },
   de: {
     nav_downloads: "Downloads", nav_settings: "Einstellungen", nav_about: "Über", nav_theme: "Design",
@@ -40,7 +50,12 @@ const I18N = {
     pause: "Pause", resume: "Fortsetzen", cancel: "Abbrechen", remove: "Entfernen",
     invalid_url: "Bitte eine gültige URL (http/https) eingeben.",
     starting: "Starte…",
-    segments: "Segmente"
+    segments: "Segmente",
+    link_receiver_title: "Nativer Link-Empfänger",
+    receiver_desc: "Downloads von Browser-Erweiterung empfangen",
+    receiver_active: "Aktiv",
+    receiver_inactive: "Inaktiv",
+    receiver_port: "Port"
   }
 };
 
@@ -73,6 +88,7 @@ function applyI18n() {
     if (I18N[lang][k]) el.placeholder = I18N[lang][k];
   });
   $("#lang-select").value = lang;
+  updateServerUI();
   render();
 }
 
@@ -192,6 +208,30 @@ $("#theme-select").addEventListener("change", (e) => { theme = e.target.value; a
 $("#lang-select").addEventListener("change", (e) => { lang = e.target.value; localStorage.setItem("kite.lang", lang); applyI18n(); });
 $("#open-dir-btn").addEventListener("click", () => invoke("open_folder", { path: defaultDir }));
 
+let serverStatus = { enabled: true, port: 5741 };
+
+function updateServerUI() {
+  const t = I18N[lang];
+  const btn = $("#receiver-toggle-btn");
+  const info = $("#receiver-port-info");
+  if (!btn || !info) return;
+  info.textContent = `${t.receiver_port}: ${serverStatus.port}`;
+  if (serverStatus.enabled) {
+    btn.textContent = t.receiver_active;
+    btn.className = "btn";
+  } else {
+    btn.textContent = t.receiver_inactive;
+    btn.className = "btn ghost";
+  }
+}
+
+$("#receiver-toggle-btn").addEventListener("click", async () => {
+  try {
+    serverStatus = await invoke("toggle_server", { enable: !serverStatus.enabled });
+    updateServerUI();
+  } catch (err) { alert(String(err)); }
+});
+
 listen("download-update", (ev) => {
   items[ev.payload.id] = ev.payload;
   render();
@@ -202,6 +242,10 @@ listen("download-update", (ev) => {
   defaultDir = await invoke("get_default_dir");
   $("#dir-input").value = defaultDir;
   applyI18n();
+  try {
+    serverStatus = await invoke("get_server_status");
+    updateServerUI();
+  } catch {}
   const existing = await invoke("list_downloads");
   for (const it of existing) items[it.id] = it;
   render();

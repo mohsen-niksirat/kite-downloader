@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kite Downloader</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo">
+        <span class="icon">🪁</span>
+        <span class="title">Kite</span>
+      </div>
+      <div id="status-pill" class="status-pill offline" title="Connection to Kite Desktop">
+        <span class="status-dot"></span>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </header>
+
+    <div class="actions-bar">
+      <div class="media-count" id="count-label">0 media detected</div>
+      <div class="bar-btns">
+        <button id="refresh-btn" class="btn-icon" title="Rescan page">🔄</button>
+        <button id="send-all-btn" class="btn-primary-sm" style="display:none;">⬇ Send All</button>
+      </div>
+    </div>
+
+    <div id="media-list" class="media-list"></div>
+
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <p>No downloadable media detected on this page yet.</p>
+      <small>Videos, streams (.m3u8), and file links will appear here automatically.</small>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

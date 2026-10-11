@@ -9,6 +9,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
 
 pub mod hls;
+pub mod server;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,14 +28,23 @@ pub struct DownloadItem {
     pub headers: HashMap<String, String>,
 }
 
-#[derive(Default)]
 pub struct DownloadManager {
     pub items: Arc<tokio::sync::Mutex<HashMap<String, DownloadItem>>>,
     pub controls: Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::mpsc::Sender<String>>>>,
+    pub server: server::LinkServer,
 }
 
+impl Default for DownloadManager {
+    fn default() -> Self {
+        Self {
+            items: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            controls: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            server: server::LinkServer::new(5741),
+        }
+    }
+}
 
-fn default_dir() -> PathBuf {
+pub(crate) fn default_dir() -> PathBuf {
     dirs::download_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Downloads"))
 }
 
@@ -308,15 +318,14 @@ pub async fn run_download(app: AppHandle, mut item: DownloadItem, mut rx: tokio:
     }
 }
 
-#[tauri::command]
-async fn add_download(
+pub async fn add_download_core(
     app: AppHandle,
-    state: State<'_, DownloadManager>,
     url: String,
     filename: Option<String>,
     directory: Option<String>,
     headers: Option<HashMap<String, String>>,
 ) -> Result<DownloadItem, String> {
+    let manager: State<DownloadManager> = app.state();
     let id = Uuid::new_v4().to_string();
     let item = DownloadItem {
         id: id.clone(),
@@ -333,8 +342,8 @@ async fn add_download(
     };
 
     let (tx, rx) = tokio::sync::mpsc::channel::<String>(8);
-    state.controls.lock().await.insert(id, tx);
-    state.items.lock().await.insert(item.id.clone(), item.clone());
+    manager.controls.lock().await.insert(id, tx);
+    manager.items.lock().await.insert(item.id.clone(), item.clone());
 
     if hls::is_hls_url(&item.url) {
         tauri::async_runtime::spawn(hls::run_hls_download(app, item.clone(), rx));
@@ -342,6 +351,18 @@ async fn add_download(
         tauri::async_runtime::spawn(run_download(app, item.clone(), rx));
     }
     Ok(item)
+}
+
+#[tauri::command]
+async fn add_download(
+    app: AppHandle,
+    _state: State<'_, DownloadManager>,
+    url: String,
+    filename: Option<String>,
+    directory: Option<String>,
+    headers: Option<HashMap<String, String>>,
+) -> Result<DownloadItem, String> {
+    add_download_core(app, url, filename, directory, headers).await
 }
 
 #[tauri::command]
@@ -402,11 +423,31 @@ fn format_bytes(bytes: u64) -> String {
     format_size(bytes)
 }
 
+#[tauri::command]
+fn get_server_status(state: State<'_, DownloadManager>) -> server::ServerStatus {
+    state.server.status()
+}
+
+#[tauri::command]
+fn toggle_server(app: AppHandle, state: State<'_, DownloadManager>, enable: bool) -> Result<server::ServerStatus, String> {
+    if enable {
+        state.server.start(app)?;
+    } else {
+        state.server.stop();
+    }
+    Ok(state.server.status())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(DownloadManager::default())
+        .setup(|app| {
+            let manager: State<DownloadManager> = app.state();
+            let _ = manager.server.start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             add_download,
             control_download,
@@ -414,7 +455,9 @@ fn run() {
             remove_download,
             open_folder,
             get_default_dir,
-            format_bytes
+            format_bytes,
+            get_server_status,
+            toggle_server
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
