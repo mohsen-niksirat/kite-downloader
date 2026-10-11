@@ -165,18 +165,37 @@ pub async fn run_hls_download(
                 let headers = headers_map.clone();
                 let seg_idx = start_idx + offset;
                 async move {
-                    let mut req = client.get(&seg_url);
-                    for (k, v) in &headers {
-                        if let (Ok(hk), Ok(hv)) = (k.parse::<reqwest::header::HeaderName>(), v.parse::<reqwest::header::HeaderValue>()) {
-                            req = req.header(hk, hv);
+                    let mut seg_retries = 0;
+                    loop {
+                        let mut req = client.get(&seg_url);
+                        for (k, v) in &headers {
+                            if let (Ok(hk), Ok(hv)) = (k.parse::<reqwest::header::HeaderName>(), v.parse::<reqwest::header::HeaderValue>()) {
+                                req = req.header(hk, hv);
+                            }
+                        }
+                        match req.send().await {
+                            Ok(res) if res.status().is_success() => {
+                                match res.bytes().await {
+                                    Ok(bytes) => return Ok((seg_idx, bytes)),
+                                    Err(_e) if seg_retries < 5 => {
+                                        seg_retries += 1;
+                                        tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(seg_retries))).await;
+                                    }
+                                    Err(e) => return Err(format!("Segment {seg_idx} read error: {e}")),
+                                }
+                            }
+                            Ok(_res) if seg_retries < 5 => {
+                                seg_retries += 1;
+                                tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(seg_retries))).await;
+                            }
+                            Ok(res) => return Err(format!("Segment {seg_idx} HTTP error: {}", res.status())),
+                            Err(_e) if seg_retries < 5 => {
+                                seg_retries += 1;
+                                tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(seg_retries))).await;
+                            }
+                            Err(e) => return Err(format!("Segment {seg_idx} network error: {e}")),
                         }
                     }
-                    let res = req.send().await.map_err(|e| format!("Segment {seg_idx} network error: {e}"))?;
-                    if !res.status().is_success() {
-                        return Err(format!("Segment {seg_idx} HTTP error: {}", res.status()));
-                    }
-                    let bytes = res.bytes().await.map_err(|e| format!("Segment {seg_idx} read error: {e}"))?;
-                    Ok((seg_idx, bytes))
                 }
             }))
             .buffered(6); // Download up to 6 segments concurrently, keeping order
@@ -193,6 +212,7 @@ pub async fn run_hls_download(
                                 {
                                     let mut items = manager.items.lock().await;
                                     items.insert(item.id.clone(), item.clone());
+                                    crate::storage::save_history(&items);
                                 }
                                 let _ = app.emit("download-update", &item);
 
@@ -204,6 +224,7 @@ pub async fn run_hls_download(
                                             item.status = "canceled".into();
                                             let mut items = manager.items.lock().await;
                                             items.insert(item.id.clone(), item.clone());
+                                            crate::storage::save_history(&items);
                                             let _ = app.emit("download-update", &item);
                                             return Ok(());
                                         }
@@ -224,6 +245,7 @@ pub async fn run_hls_download(
                                 item.status = "canceled".into();
                                 let mut items = manager.items.lock().await;
                                 items.insert(item.id.clone(), item.clone());
+                                crate::storage::save_history(&items);
                                 let _ = app.emit("download-update", &item);
                                 return Ok(());
                             }
@@ -235,6 +257,12 @@ pub async fn run_hls_download(
                             Some(Ok((_idx, bytes))) => {
                                 file.write_all(&bytes).await.map_err(|e| e.to_string())?;
                                 item.downloaded_bytes += 1;
+
+                                let speed_limit = *manager.speed_limit_kbps.read().await;
+                                if speed_limit > 0 {
+                                    let pacing = bytes.len() as f64 / (speed_limit as f64 * 1024.0);
+                                    tokio::time::sleep(std::time::Duration::from_secs_f64(pacing)).await;
+                                }
 
                                 let now = std::time::Instant::now();
                                 if now.duration_since(last_emit).as_millis() > 300 {
@@ -299,6 +327,7 @@ pub async fn run_hls_download(
         {
             let mut items = manager.items.lock().await;
             items.insert(item.id.clone(), item.clone());
+            crate::storage::save_history(&items);
         }
         let _ = app.emit("download-update", &item);
         Ok(())
@@ -311,6 +340,7 @@ pub async fn run_hls_download(
         item.speed_bps = 0;
         let mut items = manager.items.lock().await;
         items.insert(item.id.clone(), item.clone());
+        crate::storage::save_history(&items);
         let _ = app.emit("download-update", &item);
     }
 }

@@ -76,6 +76,7 @@ input[type=text]:focus { border-color: var(--accent); }
 .badge.paused { background:rgba(255,180,0,.15); color:#e3b341; }
 .badge.error { background:color-mix(in srgb, var(--err) 18%, transparent); color:var(--err); }
 .badge.queued { background:var(--bg2); color:var(--muted); }
+.badge.scheduled { background:rgba(168,85,247,0.2); color:#c084fc; }
 .progress-track { height:8px; border-radius:99px; background:var(--bg2); overflow:hidden; }
 .progress-fill { height:100%; border-radius:99px; background:linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s; }
 .dl-actions { display:flex; gap:6px; margin-top:8px; }
@@ -179,7 +180,14 @@ select {
         </div>
         <div class="row" id="row-direct">
           <input type="text" id="url-input" data-i18n-ph="url_ph" placeholder="Paste a download link (https://... or m3u8)" />
+          <button class="btn ghost" id="schedule-toggle-btn" title="Schedule download">⏰</button>
           <button class="btn" id="add-btn">⬇ <span data-i18n="start">Start</span></button>
+        </div>
+        <div class="row hidden" id="row-schedule" style="margin-top:10px">
+          <div style="display:flex; align-items:center; gap:8px; flex:1">
+            <span style="font-size:13px; color:var(--muted)">⏰ <span data-i18n="schedule_time">Start at:</span></span>
+            <input type="datetime-local" id="schedule-input" style="flex:1; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--text); font-size:13px; outline:none;" />
+          </div>
         </div>
         <div class="row hidden" id="row-scan">
           <input type="text" id="scan-input" data-i18n-ph="scan_ph" placeholder="Paste webpage URL to deep scan for media..." />
@@ -215,6 +223,18 @@ select {
             <div class="dl-meta" id="receiver-port-info" style="margin-top:4px">Port: 5741</div>
           </div>
           <button class="btn" id="receiver-toggle-btn" style="min-width:100px">Active</button>
+        </div>
+      </div>
+      <div class="glass-card">
+        <h2>⚡ <span data-i18n="speed_limit_label">Speed Limiter</span></h2>
+        <div class="folder-row" style="justify-content:space-between">
+          <div>
+            <div style="font-size:14px; font-weight:600" data-i18n="speed_limit_desc">Throttle maximum download speed (0 = unlimited)</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px">
+            <input type="number" id="speed-limit-input" min="0" step="50" placeholder="0" style="width:110px; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--text); font-size:13px; outline:none; text-align:right" />
+            <span style="font-size:13px; color:var(--muted)">KB/s</span>
+          </div>
         </div>
       </div>
       <div class="glass-card">

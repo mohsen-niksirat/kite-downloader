@@ -103,6 +103,7 @@ impl LinkServer {
                                             dl_req.filename,
                                             Some(default_dir),
                                             dl_req.headers,
+                                            None,
                                         ).await;
                                     });
 

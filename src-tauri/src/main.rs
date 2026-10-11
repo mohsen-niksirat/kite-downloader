@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub mod hls;
 pub mod server;
 pub mod scanner;
+pub mod storage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,26 +22,36 @@ pub struct DownloadItem {
     pub path: String,
     pub total_bytes: u64,
     pub downloaded_bytes: u64,
-    pub status: String, // queued | downloading | paused | completed | error | canceled
+    pub status: String, // queued | downloading | paused | completed | error | canceled | scheduled
     pub error: Option<String>,
     pub speed_bps: u64,
     pub threads: u32,
     #[serde(default)]
     pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub scheduled_at: Option<String>,
 }
 
 pub struct DownloadManager {
     pub items: Arc<tokio::sync::Mutex<HashMap<String, DownloadItem>>>,
     pub controls: Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::mpsc::Sender<String>>>>,
     pub server: server::LinkServer,
+    pub speed_limit_kbps: Arc<tokio::sync::RwLock<u64>>,
+    pub settings: Arc<tokio::sync::RwLock<storage::AppSettings>>,
 }
 
 impl Default for DownloadManager {
     fn default() -> Self {
+        let saved_settings = storage::load_settings();
+        let limit = saved_settings.speed_limit_kbps;
+        let port = saved_settings.port;
+        let history = storage::load_history();
         Self {
-            items: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            items: Arc::new(tokio::sync::Mutex::new(history)),
             controls: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            server: server::LinkServer::new(5741),
+            server: server::LinkServer::new(port),
+            speed_limit_kbps: Arc::new(tokio::sync::RwLock::new(limit)),
+            settings: Arc::new(tokio::sync::RwLock::new(saved_settings)),
         }
     }
 }
@@ -194,101 +205,166 @@ pub async fn run_download(app: AppHandle, mut item: DownloadItem, mut rx: tokio:
         {
             let mut items = manager.items.lock().await;
             items.insert(item.id.clone(), item.clone());
+            storage::save_history(&items);
         }
         let _ = app.emit("download-update", &item);
 
-        // Actual download: GET with Range from downloaded_bytes
-        let mut req = client.get(&item.url);
-        for (k, v) in &item.headers {
-            req = req.header(k.parse::<reqwest::header::HeaderName>().unwrap(), v.parse::<reqwest::header::HeaderValue>().unwrap());
-        }
-        if item.downloaded_bytes > 0 {
-            req = req.header("Range", format!("bytes={}-", item.downloaded_bytes));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("HTTP {}", resp.status().as_u16()));
-        }
+        let mut retry_count = 0u32;
+        const MAX_RETRIES: u32 = 5;
 
-        let mut stream = resp.bytes_stream();
-        let mut last_emit = std::time::Instant::now();
-        let mut last_bytes = item.downloaded_bytes;
-        let mut speed = 0u64;
+        'stream_retry: loop {
+            let mut req = client.get(&item.url);
+            for (k, v) in &item.headers {
+                if let (Ok(hk), Ok(hv)) = (k.parse::<reqwest::header::HeaderName>(), v.parse::<reqwest::header::HeaderValue>()) {
+                    req = req.header(hk, hv);
+                }
+            }
+            if item.downloaded_bytes > 0 {
+                req = req.header("Range", format!("bytes={}-", item.downloaded_bytes));
+            }
 
-        loop {
-            tokio::select! {
-                cmd = rx.recv() => {
-                    match cmd.as_deref() {
-                        Some("pause") => {
-                            item.status = "paused".into();
-                            {
-                                let mut items = manager.items.lock().await;
-                                items.insert(item.id.clone(), item.clone());
-                            }
-                            let _ = app.emit("download-update", &item);
-                            // Wait for resume/cancel
-                            while let Some(c2) = rx.recv().await {
-                                match c2.as_str() {
-                                    "resume" => break,
-                                    "cancel" => {
-                                        let _ = tokio::fs::remove_file(&file_path).await;
-                                        item.status = "canceled".into();
-                                        let mut items = manager.items.lock().await;
-                                        items.insert(item.id.clone(), item.clone());
-                                        let _ = app.emit("download-update", &item);
-                                        return Ok(());
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            item.status = "downloading".into();
-                            // Reconnect with new range
-                            let mut req = client.get(&item.url);
-                            for (k, v) in &item.headers {
-                                req = req.header(k.parse::<reqwest::header::HeaderName>().unwrap(), v.parse::<reqwest::header::HeaderValue>().unwrap());
-                            }
-                            req = req.header("Range", format!("bytes={}-", item.downloaded_bytes));
-                            let resp = req.send().await.map_err(|e| e.to_string())?;
-                            if !resp.status().is_success() {
-                                return Err(format!("HTTP {}", resp.status().as_u16()));
-                            }
-                            let f = tokio::fs::OpenOptions::new().write(true).open(&file_path).await.map_err(|e| e.to_string())?;
-                            let mut f = f;
-                            f.seek(std::io::SeekFrom::Start(item.downloaded_bytes)).await.map_err(|e| e.to_string())?;
-                            file = f;
-                            stream = resp.bytes_stream();
-                        }
-                        Some("cancel") => {
-                            let _ = tokio::fs::remove_file(&file_path).await;
-                            item.status = "canceled".into();
+            let resp = match req.send().await {
+                Ok(r) if r.status().is_success() => r,
+                Ok(r) => {
+                    if retry_count < MAX_RETRIES {
+                        retry_count += 1;
+                        let backoff = 2u64.pow(retry_count);
+                        item.error = Some(format!("HTTP {}. Retrying in {backoff}s ({retry_count}/{MAX_RETRIES})", r.status().as_u16()));
+                        item.speed_bps = 0;
+                        {
                             let mut items = manager.items.lock().await;
                             items.insert(item.id.clone(), item.clone());
-                            let _ = app.emit("download-update", &item);
-                            return Ok(());
                         }
-                        _ => {}
+                        let _ = app.emit("download-update", &item);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(backoff)).await;
+                        continue 'stream_retry;
+                    } else {
+                        return Err(format!("HTTP {}", r.status().as_u16()));
                     }
                 }
-                chunk = stream.next() => {
-                    match chunk {
-                        Some(Ok(bytes)) => {
-                            file.write_all(&bytes).await.map_err(|e| e.to_string())?;
-                            item.downloaded_bytes += bytes.len() as u64;
-                            let now = std::time::Instant::now();
-                            if now.duration_since(last_emit).as_millis() > 300 {
-                                let dt = now.duration_since(last_emit).as_secs_f64();
-                                let db = item.downloaded_bytes - last_bytes;
-                                if dt > 0.0 { speed = (db as f64 / dt) as u64; }
-                                last_emit = now;
-                                last_bytes = item.downloaded_bytes;
-                                item.speed_bps = speed;
+                Err(e) => {
+                    if retry_count < MAX_RETRIES {
+                        retry_count += 1;
+                        let backoff = 2u64.pow(retry_count);
+                        item.error = Some(format!("Network error: {e}. Retrying in {backoff}s ({retry_count}/{MAX_RETRIES})"));
+                        item.speed_bps = 0;
+                        {
+                            let mut items = manager.items.lock().await;
+                            items.insert(item.id.clone(), item.clone());
+                        }
+                        let _ = app.emit("download-update", &item);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(backoff)).await;
+                        continue 'stream_retry;
+                    } else {
+                        return Err(e.to_string());
+                    }
+                }
+            };
+
+            if item.error.is_some() {
+                item.error = None;
+                let _ = app.emit("download-update", &item);
+            }
+
+            let mut stream = resp.bytes_stream();
+            let mut last_emit = std::time::Instant::now();
+            let mut last_bytes = item.downloaded_bytes;
+            let mut speed = 0u64;
+
+            loop {
+                tokio::select! {
+                    cmd = rx.recv() => {
+                        match cmd.as_deref() {
+                            Some("pause") => {
+                                item.status = "paused".into();
+                                item.speed_bps = 0;
+                                {
+                                    let mut items = manager.items.lock().await;
+                                    items.insert(item.id.clone(), item.clone());
+                                    storage::save_history(&items);
+                                }
+                                let _ = app.emit("download-update", &item);
+                                while let Some(c2) = rx.recv().await {
+                                    match c2.as_str() {
+                                        "resume" => break,
+                                        "cancel" => {
+                                            let _ = tokio::fs::remove_file(&file_path).await;
+                                            item.status = "canceled".into();
+                                            let mut items = manager.items.lock().await;
+                                            items.insert(item.id.clone(), item.clone());
+                                            storage::save_history(&items);
+                                            let _ = app.emit("download-update", &item);
+                                            return Ok(());
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                item.status = "downloading".into();
+                                retry_count = 0;
+                                let f = tokio::fs::OpenOptions::new().write(true).open(&file_path).await.map_err(|e| e.to_string())?;
+                                let mut f = f;
+                                f.seek(std::io::SeekFrom::Start(item.downloaded_bytes)).await.map_err(|e| e.to_string())?;
+                                file = f;
+                                continue 'stream_retry;
+                            }
+                            Some("cancel") => {
+                                let _ = tokio::fs::remove_file(&file_path).await;
+                                item.status = "canceled".into();
                                 let mut items = manager.items.lock().await;
                                 items.insert(item.id.clone(), item.clone());
+                                storage::save_history(&items);
                                 let _ = app.emit("download-update", &item);
+                                return Ok(());
                             }
+                            _ => {}
                         }
-                        Some(Err(e)) => return Err(e.to_string()),
-                        None => break,
+                    }
+                    chunk = stream.next() => {
+                        match chunk {
+                            Some(Ok(bytes)) => {
+                                retry_count = 0;
+                                file.write_all(&bytes).await.map_err(|e| e.to_string())?;
+                                item.downloaded_bytes += bytes.len() as u64;
+
+                                let limit_kbps = *manager.speed_limit_kbps.read().await;
+                                if limit_kbps > 0 {
+                                    let pacing = bytes.len() as f64 / (limit_kbps as f64 * 1024.0);
+                                    tokio::time::sleep(tokio::time::Duration::from_secs_f64(pacing)).await;
+                                }
+
+                                let now = std::time::Instant::now();
+                                if now.duration_since(last_emit).as_millis() > 300 {
+                                    let dt = now.duration_since(last_emit).as_secs_f64();
+                                    let db = item.downloaded_bytes - last_bytes;
+                                    if dt > 0.0 { speed = (db as f64 / dt) as u64; }
+                                    last_emit = now;
+                                    last_bytes = item.downloaded_bytes;
+                                    item.speed_bps = speed;
+                                    let mut items = manager.items.lock().await;
+                                    items.insert(item.id.clone(), item.clone());
+                                    let _ = app.emit("download-update", &item);
+                                }
+                            }
+                            Some(Err(e)) => {
+                                if retry_count < MAX_RETRIES {
+                                    retry_count += 1;
+                                    let backoff = 2u64.pow(retry_count);
+                                    item.error = Some(format!("Stream error: {e}. Retrying in {backoff}s ({retry_count}/{MAX_RETRIES})"));
+                                    item.speed_bps = 0;
+                                    {
+                                        let mut items = manager.items.lock().await;
+                                        items.insert(item.id.clone(), item.clone());
+                                    }
+                                    let _ = app.emit("download-update", &item);
+                                    let _ = file.seek(std::io::SeekFrom::Start(item.downloaded_bytes)).await;
+                                    tokio::time::sleep(tokio::time::Duration::from_secs(backoff)).await;
+                                    continue 'stream_retry;
+                                } else {
+                                    return Err(e.to_string());
+                                }
+                            }
+                            None => break 'stream_retry,
+                        }
                     }
                 }
             }
@@ -303,6 +379,7 @@ pub async fn run_download(app: AppHandle, mut item: DownloadItem, mut rx: tokio:
         {
             let mut items = manager.items.lock().await;
             items.insert(item.id.clone(), item.clone());
+            storage::save_history(&items);
         }
         let _ = app.emit("download-update", &item);
         Ok(())
@@ -315,6 +392,7 @@ pub async fn run_download(app: AppHandle, mut item: DownloadItem, mut rx: tokio:
         item.speed_bps = 0;
         let mut items = manager.items.lock().await;
         items.insert(item.id.clone(), item.clone());
+        storage::save_history(&items);
         let _ = app.emit("download-update", &item);
     }
 }
@@ -325,10 +403,11 @@ pub async fn add_download_core(
     filename: Option<String>,
     directory: Option<String>,
     headers: Option<HashMap<String, String>>,
+    scheduled_at: Option<String>,
 ) -> Result<DownloadItem, String> {
     let manager: State<DownloadManager> = app.state();
     let id = Uuid::new_v4().to_string();
-    let item = DownloadItem {
+    let mut item = DownloadItem {
         id: id.clone(),
         url: url.trim().to_string(),
         filename: filename.unwrap_or_default(),
@@ -340,11 +419,107 @@ pub async fn add_download_core(
         speed_bps: 0,
         threads: 8,
         headers: headers.unwrap_or_default(),
+        scheduled_at: scheduled_at.clone(),
     };
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<String>(8);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(8);
     manager.controls.lock().await.insert(id, tx);
-    manager.items.lock().await.insert(item.id.clone(), item.clone());
+
+    let is_scheduled = if let Some(ref sched_str) = scheduled_at {
+        let now_sec = chrono::Utc::now().timestamp();
+        let target_sec = if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(sched_str) {
+            dt.timestamp()
+        } else if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(sched_str, "%Y-%m-%dT%H:%M") {
+            ndt.and_utc().timestamp()
+        } else {
+            0
+        };
+        target_sec > now_sec
+    } else {
+        false
+    };
+
+    if is_scheduled {
+        item.status = "scheduled".into();
+        {
+            let mut items = manager.items.lock().await;
+            items.insert(item.id.clone(), item.clone());
+            storage::save_history(&items);
+        }
+        let _ = app.emit("download-update", &item);
+
+        let app_clone = app.clone();
+        let item_clone = item.clone();
+        let sched_str = scheduled_at.unwrap();
+
+        tauri::async_runtime::spawn(async move {
+            let now_sec = chrono::Utc::now().timestamp();
+            let target_sec = if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&sched_str) {
+                dt.timestamp()
+            } else if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(&sched_str, "%Y-%m-%dT%H:%M") {
+                ndt.and_utc().timestamp()
+            } else {
+                now_sec
+            };
+            let delay_sec = (target_sec - now_sec).max(0) as u64;
+            let sleep_fut = tokio::time::sleep(tokio::time::Duration::from_secs(delay_sec));
+            tokio::pin!(sleep_fut);
+
+            tokio::select! {
+                _ = &mut sleep_fut => {
+                    let mgr: State<DownloadManager> = app_clone.state();
+                    {
+                        let mut items = mgr.items.lock().await;
+                        if let Some(it) = items.get_mut(&item_clone.id) {
+                            if it.status != "scheduled" {
+                                return;
+                            }
+                            it.status = "queued".into();
+                        }
+                    }
+                    if hls::is_hls_url(&item_clone.url) {
+                        tauri::async_runtime::spawn(hls::run_hls_download(app_clone, item_clone, rx));
+                    } else {
+                        tauri::async_runtime::spawn(run_download(app_clone, item_clone, rx));
+                    }
+                }
+                cmd = rx.recv() => {
+                    match cmd.as_deref() {
+                        Some("cancel") => {
+                            let mgr: State<DownloadManager> = app_clone.state();
+                            let mut items = mgr.items.lock().await;
+                            let updated_item = if let Some(it) = items.get_mut(&item_clone.id) {
+                                it.status = "canceled".into();
+                                Some(it.clone())
+                            } else {
+                                None
+                            };
+                            if let Some(it) = updated_item {
+                                storage::save_history(&items);
+                                let _ = app_clone.emit("download-update", &it);
+                            }
+                        }
+                        Some("resume") => {
+                            if hls::is_hls_url(&item_clone.url) {
+                                tauri::async_runtime::spawn(hls::run_hls_download(app_clone, item_clone, rx));
+                            } else {
+                                tauri::async_runtime::spawn(run_download(app_clone, item_clone, rx));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+
+        return Ok(item);
+    }
+
+    {
+        let mut items = manager.items.lock().await;
+        items.insert(item.id.clone(), item.clone());
+        storage::save_history(&items);
+    }
 
     if hls::is_hls_url(&item.url) {
         tauri::async_runtime::spawn(hls::run_hls_download(app, item.clone(), rx));
@@ -362,15 +537,44 @@ async fn add_download(
     filename: Option<String>,
     directory: Option<String>,
     headers: Option<HashMap<String, String>>,
+    scheduled_at: Option<String>,
 ) -> Result<DownloadItem, String> {
-    add_download_core(app, url, filename, directory, headers).await
+    add_download_core(app, url, filename, directory, headers, scheduled_at).await
 }
 
 #[tauri::command]
-async fn control_download(state: State<'_, DownloadManager>, id: String, action: String) -> Result<(), String> {
-    let controls = state.controls.lock().await;
+async fn control_download(app: AppHandle, state: State<'_, DownloadManager>, id: String, action: String) -> Result<(), String> {
+    let mut controls = state.controls.lock().await;
     if let Some(tx) = controls.get(&id) {
         tx.send(action).await.map_err(|_| "task ended".to_string())?;
+    } else if action == "resume" {
+        let mut items = state.items.lock().await;
+        let to_resume = if let Some(item) = items.get_mut(&id) {
+            if item.status == "paused" || item.status == "error" || item.status == "canceled" || item.status == "scheduled" {
+                item.status = "downloading".into();
+                item.error = None;
+                Some(item.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(item_clone) = to_resume {
+            let (tx, rx) = tokio::sync::mpsc::channel::<String>(8);
+            controls.insert(id.clone(), tx);
+            storage::save_history(&items);
+            let _ = app.emit("download-update", &item_clone);
+
+            if hls::is_hls_url(&item_clone.url) {
+                tauri::async_runtime::spawn(hls::run_hls_download(app, item_clone, rx));
+            } else {
+                tauri::async_runtime::spawn(run_download(app, item_clone, rx));
+            }
+            return Ok(());
+        }
+        return Err("download not found".into());
     } else {
         return Err("download not found or finished".into());
     }
@@ -399,7 +603,9 @@ async fn remove_download(state: State<'_, DownloadManager>, id: String, delete_f
             let _ = tokio::fs::remove_file(p).await;
         }
     }
-    state.items.lock().await.remove(&id);
+    let mut items = state.items.lock().await;
+    items.remove(&id);
+    storage::save_history(&items);
     Ok(())
 }
 
@@ -444,6 +650,28 @@ async fn scan_page(url: String) -> Result<Vec<scanner::ScannedMedia>, String> {
     scanner::scan_page_links(&url).await
 }
 
+#[tauri::command]
+async fn get_settings(state: State<'_, DownloadManager>) -> Result<storage::AppSettings, String> {
+    Ok(state.settings.read().await.clone())
+}
+
+#[tauri::command]
+async fn save_settings(state: State<'_, DownloadManager>, settings: storage::AppSettings) -> Result<(), String> {
+    *state.speed_limit_kbps.write().await = settings.speed_limit_kbps;
+    *state.settings.write().await = settings.clone();
+    storage::save_settings(&settings);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_speed_limit(state: State<'_, DownloadManager>, kbps: u64) -> Result<(), String> {
+    *state.speed_limit_kbps.write().await = kbps;
+    let mut settings = state.settings.write().await;
+    settings.speed_limit_kbps = kbps;
+    storage::save_settings(&settings);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn run() {
     tauri::Builder::default()
@@ -464,7 +692,10 @@ fn run() {
             format_bytes,
             get_server_status,
             toggle_server,
-            scan_page
+            scan_page,
+            get_settings,
+            save_settings,
+            set_speed_limit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

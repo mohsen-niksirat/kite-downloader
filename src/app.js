@@ -36,7 +36,12 @@ const I18N = {
     filter_archive: "Archives",
     filter_doc: "Documents",
     filter_img: "Images",
-    selected_count: "selected"
+    selected_count: "selected",
+    schedule_time: "Start at:",
+    speed_limit_label: "Speed Limiter",
+    speed_limit_desc: "Throttle maximum download speed (0 = unlimited)",
+    start_now: "Start now",
+    dropped_link: "Added dropped link"
   },
   fa: {
     nav_downloads: "دانلودها", nav_settings: "تنظیمات", nav_about: "درباره", nav_theme: "تم",
@@ -71,7 +76,12 @@ const I18N = {
     filter_archive: "فشرده",
     filter_doc: "اسناد",
     filter_img: "تصاویر",
-    selected_count: "انتخاب‌شده"
+    selected_count: "انتخاب‌شده",
+    schedule_time: "زمان شروع:",
+    speed_limit_label: "محدودکننده سرعت",
+    speed_limit_desc: "محدود کردن حداکثر سرعت دانلود (۰ = نامحدود)",
+    start_now: "شروع فوری",
+    dropped_link: "لینک رها شده اضافه شد"
   },
   de: {
     nav_downloads: "Downloads", nav_settings: "Einstellungen", nav_about: "Über", nav_theme: "Design",
@@ -106,7 +116,12 @@ const I18N = {
     filter_archive: "Archive",
     filter_doc: "Dokumente",
     filter_img: "Bilder",
-    selected_count: "ausgewählt"
+    selected_count: "ausgewählt",
+    schedule_time: "Startzeit:",
+    speed_limit_label: "Geschwindigkeitsbegrenzer",
+    speed_limit_desc: "Maximale Download-Geschwindigkeit drosseln (0 = unbegrenzt)",
+    start_now: "Jetzt starten",
+    dropped_link: "Abgelegter Link hinzugefügt"
   }
 };
 
@@ -175,7 +190,10 @@ function render() {
       ? (it.totalBytes > 0 ? `${it.downloadedBytes} / ${it.totalBytes} ${t.segments} (${pct.toFixed(1)}%)` : `${it.downloadedBytes} ${t.segments}`)
       : (it.totalBytes > 0 ? `${fmtBytes(it.downloadedBytes)} / ${fmtBytes(it.totalBytes)} (${pct.toFixed(1)}%)` : fmtBytes(it.downloadedBytes));
     let actions = "";
-    if (it.status === "downloading" || it.status === "queued") {
+    if (it.status === "scheduled") {
+      actions += `<button class="icon-btn" data-act="resume" data-id="${it.id}" title="${t.start_now}">▶</button>`;
+      actions += `<button class="icon-btn" data-act="cancel" data-id="${it.id}" title="${t.cancel}">✖</button>`;
+    } else if (it.status === "downloading" || it.status === "queued") {
       actions += `<button class="icon-btn" data-act="pause" data-id="${it.id}" title="${t.pause}">⏸</button>`;
     }
     if (it.status === "paused") {
@@ -183,13 +201,14 @@ function render() {
     }
     if (["downloading", "queued", "paused"].includes(it.status)) {
       actions += `<button class="icon-btn" data-act="cancel" data-id="${it.id}" title="${t.cancel}">✖</button>`;
-    } else {
+    } else if (it.status !== "scheduled") {
       actions += `<button class="icon-btn" data-act="remove" data-id="${it.id}" title="${t.remove}">🗑</button>`;
     }
     if (it.status === "completed") {
       actions = `<button class="icon-btn" data-act="openfolder" data-id="${it.id}" title="${t.open_folder}">📂</button>
                  <button class="icon-btn" data-act="remove" data-id="${it.id}" title="${t.remove}">🗑</button>`;
     }
+    const schedInfo = it.scheduledAt && it.status === "scheduled" ? `<div class="dl-meta" style="color:var(--accent2); margin-top:4px">⏰ ${new Date(it.scheduledAt).toLocaleString()}</div>` : "";
     el.innerHTML = `
       <div class="dl-head">
         <span class="dl-name">${escapeHtml(it.filename || it.url)}</span>
@@ -200,6 +219,7 @@ function render() {
         <span class="dl-meta">${sizeTxt}</span>
         <span class="dl-meta">${it.status === "downloading" ? fmtSpeed(it.speedBps) : ""}</span>
       </div>
+      ${schedInfo}
       ${err}
       <div class="dl-actions">${actions}</div>`;
     list.appendChild(el);
@@ -248,13 +268,27 @@ $("#tab-scan-btn").addEventListener("click", () => {
   $("#row-direct").classList.add("hidden");
 });
 
+$("#schedule-toggle-btn").addEventListener("click", () => {
+  $("#row-schedule").classList.toggle("hidden");
+  $("#schedule-toggle-btn").classList.toggle("ghost");
+});
+
 $("#add-btn").addEventListener("click", async () => {
   const url = $("#url-input").value.trim();
   if (!/^https?:\/\//i.test(url)) { alert(I18N[lang].invalid_url); return; }
+  const isSchedRowVisible = !$("#row-schedule").classList.contains("hidden");
+  const schedVal = $("#schedule-input").value;
+  const scheduledAt = (isSchedRowVisible && schedVal) ? new Date(schedVal).toISOString() : null;
+
   try {
-    const item = await invoke("add_download", { url, directory: defaultDir });
+    const item = await invoke("add_download", { url, directory: defaultDir, scheduledAt });
     items[item.id] = item;
     $("#url-input").value = "";
+    if (scheduledAt) {
+      $("#row-schedule").classList.add("hidden");
+      $("#schedule-toggle-btn").classList.add("ghost");
+      $("#schedule-input").value = "";
+    }
     render();
   } catch (err) { alert(String(err)); }
 });
@@ -382,9 +416,73 @@ $("#clear-btn").addEventListener("click", async () => {
   }
 });
 
-$("#theme-select").addEventListener("change", (e) => { theme = e.target.value; applyTheme(); });
-$("#lang-select").addEventListener("change", (e) => { lang = e.target.value; localStorage.setItem("kite.lang", lang); applyI18n(); });
+async function syncSettings() {
+  const settings = {
+    theme,
+    lang,
+    defaultDir,
+    port: serverStatus.port || 5741,
+    speedLimitKbps: parseInt($("#speed-limit-input").value || "0", 10) || 0
+  };
+  try {
+    await invoke("save_settings", { settings });
+  } catch (e) {
+    console.error("Failed to save settings", e);
+  }
+}
+
+$("#theme-select").addEventListener("change", (e) => {
+  theme = e.target.value;
+  applyTheme();
+  syncSettings();
+});
+
+$("#lang-select").addEventListener("change", (e) => {
+  lang = e.target.value;
+  localStorage.setItem("kite.lang", lang);
+  applyI18n();
+  syncSettings();
+});
+
+$("#dir-input").addEventListener("change", (e) => {
+  defaultDir = e.target.value.trim();
+  syncSettings();
+});
+
+$("#speed-limit-input").addEventListener("input", () => {
+  const val = parseInt($("#speed-limit-input").value || "0", 10) || 0;
+  invoke("set_speed_limit", { kbps: val }).catch(console.error);
+  syncSettings();
+});
+
 $("#open-dir-btn").addEventListener("click", () => invoke("open_folder", { path: defaultDir }));
+
+// Drag and drop link onto window to start download
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+});
+
+window.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  let text = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+  if (text) {
+    const lines = text.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+    for (const line of lines) {
+      if (/^https?:\/\//i.test(line)) {
+        try {
+          const item = await invoke("add_download", { url: line, directory: defaultDir, scheduledAt: null });
+          items[item.id] = item;
+          render();
+          const dlNav = document.querySelector(".nav-btn[data-page='downloads']");
+          if (dlNav) dlNav.click();
+        } catch (err) {
+          console.error("Drop download error", err);
+        }
+      }
+    }
+  }
+});
 
 let serverStatus = { enabled: true, port: 5741 };
 
@@ -407,6 +505,7 @@ $("#receiver-toggle-btn").addEventListener("click", async () => {
   try {
     serverStatus = await invoke("toggle_server", { enable: !serverStatus.enabled });
     updateServerUI();
+    syncSettings();
   } catch (err) { alert(String(err)); }
 });
 
@@ -416,14 +515,34 @@ listen("download-update", (ev) => {
 });
 
 (async function init() {
-  applyTheme();
-  defaultDir = await invoke("get_default_dir");
+  try {
+    const saved = await invoke("get_settings");
+    if (saved) {
+      if (saved.theme) theme = saved.theme;
+      if (saved.lang) lang = saved.lang;
+      if (saved.defaultDir) defaultDir = saved.defaultDir;
+      if (saved.speedLimitKbps > 0) {
+        $("#speed-limit-input").value = saved.speedLimitKbps;
+      }
+      if (saved.port) serverStatus.port = saved.port;
+    }
+  } catch (e) {
+    console.error("Could not load settings", e);
+  }
+
+  if (!defaultDir) {
+    defaultDir = await invoke("get_default_dir");
+  }
   $("#dir-input").value = defaultDir;
+
+  applyTheme();
   applyI18n();
+
   try {
     serverStatus = await invoke("get_server_status");
     updateServerUI();
   } catch {}
+
   const existing = await invoke("list_downloads");
   for (const it of existing) items[it.id] = it;
   render();
