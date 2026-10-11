@@ -41,7 +41,30 @@ const I18N = {
     speed_limit_label: "Speed Limiter",
     speed_limit_desc: "Throttle maximum download speed (0 = unlimited)",
     start_now: "Start now",
-    dropped_link: "Added dropped link"
+    dropped_link: "Added dropped link",
+    cat_all: "All", cat_video: "Video", cat_audio: "Audio", cat_compressed: "Compressed",
+    cat_documents: "Documents", cat_programs: "Programs", cat_others: "Others",
+    search_ph: "Search downloads...",
+    batch_resume: "Resume All", batch_pause: "Pause All", batch_clear: "Clear Finished",
+    action_open_file: "Open File", action_checksum: "Verify Checksum",
+    hash_modal_title: "File Checksum Verification",
+    computed_hash: "Calculated Hash:",
+    compare_hash: "Verify with expected hash (optional):",
+    hash_matches: "✓ Checksum matches perfectly!",
+    hash_mismatch: "✗ Checksum does NOT match! File may be corrupt.",
+    copy: "Copy", copied: "Copied!",
+    max_concurrent_label: "Queue & Concurrent Downloads",
+    max_concurrent_desc: "Max active downloads at the same time (rest are queued)",
+    automation_title: "Automation & Notifications",
+    clip_monitor_label: "Clipboard Link Monitor",
+    clip_monitor_desc: "Auto-detect downloadable links copied to clipboard",
+    sound_label: "Completion Sound",
+    sound_desc: "Play audio chime when a download completes",
+    auto_shutdown_label: "Shutdown PC when queue completes",
+    shutdown_title: "Computer Shutdown",
+    shutdown_desc: "All downloads finished. Your computer will shut down in:",
+    abort_shutdown: "Abort Shutdown",
+    clip_detected: "Download link in clipboard"
   },
   fa: {
     nav_downloads: "دانلودها", nav_settings: "تنظیمات", nav_about: "درباره", nav_theme: "تم",
@@ -81,7 +104,30 @@ const I18N = {
     speed_limit_label: "محدودکننده سرعت",
     speed_limit_desc: "محدود کردن حداکثر سرعت دانلود (۰ = نامحدود)",
     start_now: "شروع فوری",
-    dropped_link: "لینک رها شده اضافه شد"
+    dropped_link: "لینک رها شده اضافه شد",
+    cat_all: "همه", cat_video: "ویدیو", cat_audio: "صوتی", cat_compressed: "فشرده",
+    cat_documents: "اسناد", cat_programs: "برنامه‌ها", cat_others: "سایر",
+    search_ph: "جستجوی دانلودها...",
+    batch_resume: "ادامه همه", batch_pause: "توقف همه", batch_clear: "پاکسازی پایان‌یافته‌ها",
+    action_open_file: "اجرای فایل", action_checksum: "بررسی هش و صحت فایل",
+    hash_modal_title: "بررسی صحت و امضای دیجیتال فایل",
+    computed_hash: "هش محاسبه‌شده:",
+    compare_hash: "بررسی تطابق با هش مورد انتظار (اختیاری):",
+    hash_matches: "✓ هش کاملاً منطبق و فایل کاملاً سالم است!",
+    hash_mismatch: "✗ هش همخوانی ندارد! فایل ممکن است مخدوش باشد.",
+    copy: "کپی", copied: "کپی شد!",
+    max_concurrent_label: "صف دانلود و تعداد همزمان",
+    max_concurrent_desc: "حداکثر تعداد دانلود همزمان (بقیه در صف قرار می‌گیرند)",
+    automation_title: "اتوماسیون و اعلان‌ها",
+    clip_monitor_label: "پایش خودکار کلیپ‌بورد",
+    clip_monitor_desc: "تشخیص خودکار لینک‌های دانلود کپی‌شده در کلیپ‌بورد",
+    sound_label: "صدای اتمام دانلود",
+    sound_desc: "پخش صدای ملایم هنگام تکمیل موفق دانلود",
+    auto_shutdown_label: "خاموشی سیستم پس از پایان صف",
+    shutdown_title: "خاموش‌سازی رایانه",
+    shutdown_desc: "تمامی دانلودها به پایان رسید. رایانه خاموش می‌شود در:",
+    abort_shutdown: "لغو خاموشی",
+    clip_detected: "لینک دانلود در کلیپ‌بورد شناسایی شد"
   },
   de: {
     nav_downloads: "Downloads", nav_settings: "Einstellungen", nav_about: "Über", nav_theme: "Design",
@@ -121,7 +167,30 @@ const I18N = {
     speed_limit_label: "Geschwindigkeitsbegrenzer",
     speed_limit_desc: "Maximale Download-Geschwindigkeit drosseln (0 = unbegrenzt)",
     start_now: "Jetzt starten",
-    dropped_link: "Abgelegter Link hinzugefügt"
+    dropped_link: "Abgelegter Link hinzugefügt",
+    cat_all: "Alle", cat_video: "Video", cat_audio: "Audio", cat_compressed: "Archive",
+    cat_documents: "Dokumente", cat_programs: "Programme", cat_others: "Sonstige",
+    search_ph: "Downloads durchsuchen...",
+    batch_resume: "Alle fortsetzen", batch_pause: "Alle anhalten", batch_clear: "Fertige löschen",
+    action_open_file: "Datei öffnen", action_checksum: "Prüfsumme überprüfen",
+    hash_modal_title: "Dateiprüfsummen-Überprüfung",
+    computed_hash: "Berechneter Hash:",
+    compare_hash: "Mit erwartetem Hash abgleichen (optional):",
+    hash_matches: "✓ Prüfsumme stimmt genau überein!",
+    hash_mismatch: "✗ Prüfsumme stimmt NICHT überein! Datei evtl. beschädigt.",
+    copy: "Kopieren", copied: "Kopiert!",
+    max_concurrent_label: "Warteschlange & Gleichzeitige Downloads",
+    max_concurrent_desc: "Maximale gleichzeitige Downloads (Rest wartet in Warteschlange)",
+    automation_title: "Automatisierung & Benachrichtigungen",
+    clip_monitor_label: "Zwischenablage-Überwachung",
+    clip_monitor_desc: "Download-Links in der Zwischenablage automatisch erkennen",
+    sound_label: "Abschluss-Ton",
+    sound_desc: "Ton abspielen, wenn ein Download abgeschlossen ist",
+    auto_shutdown_label: "PC nach Abschluss herunterfahren",
+    shutdown_title: "Computer herunterfahren",
+    shutdown_desc: "Alle Downloads beendet. PC fährt herunter in:",
+    abort_shutdown: "Abbrechen",
+    clip_detected: "Download-Link in der Zwischenablage erkannt"
   }
 };
 
@@ -129,8 +198,56 @@ let lang = localStorage.getItem("kite.lang") || "en";
 let theme = localStorage.getItem("kite.theme") || "dark";
 let defaultDir = "";
 let items = {}; // id -> item
+let activeCategory = "all";
+let searchQuery = "";
+let appSettings = {
+  theme: "dark",
+  lang: "en",
+  defaultDir: "",
+  port: 5741,
+  speedLimitKbps: 0,
+  maxConcurrentDownloads: 3,
+  clipboardMonitor: true,
+  playSound: true,
+  autoShutdown: false,
+};
 
 const $ = (s) => document.querySelector(s);
+
+function getFileCategory(filename, url) {
+  const target = (filename || url || "").toLowerCase().split("?")[0];
+  if (/\.(mp4|mkv|avi|mov|webm|ts|flv|m3u8)$/.test(target)) return "video";
+  if (/\.(mp3|flac|wav|aac|ogg|m4a)$/.test(target)) return "audio";
+  if (/\.(zip|rar|7z|tar|gz|bz2|xz|iso)$/.test(target)) return "compressed";
+  if (/\.(pdf|epub|docx|xlsx|pptx|txt|csv)$/.test(target)) return "documents";
+  if (/\.(exe|msi|dmg|pkg|deb|rpm|apk)$/.test(target)) return "programs";
+  return "others";
+}
+
+function playCompletionChime() {
+  if (!appSettings.playSound) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    const playTone = (freq, start, duration) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + duration);
+    };
+    playTone(1046.5, now, 0.4);       // C6
+    playTone(1567.98, now + 0.12, 0.6); // G6
+  } catch (e) {
+    console.warn("Audio chime error", e);
+  }
+}
 
 function fmtBytes(b) {
   if (!b || b <= 0) return "0 B";
@@ -160,7 +277,6 @@ function applyI18n() {
 
 function applyTheme() {
   document.body.dataset.theme = theme === "light" ? "light" : "";
-  // color themes apply to :root vars; light is separate
   if (theme !== "light" && theme !== "dark") document.body.dataset.theme = theme;
   $("#theme-select").value = theme;
   localStorage.setItem("kite.theme", theme);
@@ -168,12 +284,35 @@ function applyTheme() {
 
 function render() {
   const list = $("#dl-list");
-  const arr = Object.values(items).sort((a, b) => b.id.localeCompare(a.id));
-  $("#empty-state").classList.toggle("hidden", arr.length > 0);
+  const allArr = Object.values(items);
   const t = I18N[lang];
-  const active = arr.filter((i) => i.status === "downloading" || i.status === "queued").length;
-  const done = arr.filter((i) => i.status === "completed").length;
-  const speed = arr.reduce((s, i) => s + (i.status === "downloading" ? i.speedBps : 0), 0);
+
+  // Update category counts
+  const catCounts = { all: allArr.length, video: 0, audio: 0, compressed: 0, documents: 0, programs: 0, others: 0 };
+  for (const it of allArr) {
+    const c = getFileCategory(it.filename, it.url);
+    if (catCounts[c] !== undefined) catCounts[c]++;
+    else catCounts.others++;
+  }
+  for (const [k, v] of Object.entries(catCounts)) {
+    const b = $(`#cat-count-${k}`);
+    if (b) b.textContent = v;
+  }
+
+  // Filter items
+  let arr = allArr.sort((a, b) => b.id.localeCompare(a.id));
+  if (activeCategory !== "all") {
+    arr = arr.filter((i) => getFileCategory(i.filename, i.url) === activeCategory);
+  }
+  if (searchQuery.trim()) {
+    const q = searchQuery.trim().toLowerCase();
+    arr = arr.filter((i) => (i.filename || "").toLowerCase().includes(q) || (i.url || "").toLowerCase().includes(q));
+  }
+
+  $("#empty-state").classList.toggle("hidden", arr.length > 0);
+  const active = allArr.filter((i) => i.status === "downloading" || i.status === "queued").length;
+  const done = allArr.filter((i) => i.status === "completed").length;
+  const speed = allArr.reduce((s, i) => s + (i.status === "downloading" ? i.speedBps : 0), 0);
   $("#stat-active").textContent = `${t.stat_active}: ${active}`;
   $("#stat-done").textContent = `${t.stat_done}: ${done}`;
   $("#stat-speed").textContent = `${t.stat_speed}: ${fmtSpeed(speed)}`;
@@ -205,7 +344,9 @@ function render() {
       actions += `<button class="icon-btn" data-act="remove" data-id="${it.id}" title="${t.remove}">🗑</button>`;
     }
     if (it.status === "completed") {
-      actions = `<button class="icon-btn" data-act="openfolder" data-id="${it.id}" title="${t.open_folder}">📂</button>
+      actions = `<button class="icon-btn" data-act="openfile" data-id="${it.id}" title="${t.action_open_file}">📄</button>
+                 <button class="icon-btn" data-act="openfolder" data-id="${it.id}" title="${t.open_folder}">📂</button>
+                 <button class="icon-btn" data-act="checksum" data-id="${it.id}" title="${t.action_checksum}">🛡</button>
                  <button class="icon-btn" data-act="remove" data-id="${it.id}" title="${t.remove}">🗑</button>`;
     }
     const schedInfo = it.scheduledAt && it.status === "scheduled" ? `<div class="dl-meta" style="color:var(--accent2); margin-top:4px">⏰ ${new Date(it.scheduledAt).toLocaleString()}</div>` : "";
@@ -242,6 +383,14 @@ document.addEventListener("click", async (e) => {
       else if (act === "openfolder") {
         const it = items[id];
         if (it) await invoke("open_folder", { path: it.path });
+      }
+      else if (act === "openfile") {
+        const it = items[id];
+        if (it) await invoke("open_file", { path: it.path });
+      }
+      else if (act === "checksum") {
+        const it = items[id];
+        if (it) openHashModal(it);
       }
     } catch (err) { console.error(err); }
     return;
@@ -294,6 +443,42 @@ $("#add-btn").addEventListener("click", async () => {
 });
 
 $("#url-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#add-btn").click(); });
+
+// Category filter tabs
+document.querySelectorAll(".cat-pill").forEach((pill) => {
+  pill.addEventListener("click", () => {
+    document.querySelectorAll(".cat-pill").forEach((p) => p.classList.remove("active"));
+    pill.classList.add("active");
+    activeCategory = pill.dataset.cat || "all";
+    render();
+  });
+});
+
+// Search input
+$("#search-input").addEventListener("input", (e) => {
+  searchQuery = e.target.value;
+  render();
+});
+
+// Batch controls
+$("#batch-resume-btn").addEventListener("click", async () => {
+  try { await invoke("resume_all_downloads"); } catch (err) { console.error(err); }
+});
+
+$("#batch-pause-btn").addEventListener("click", async () => {
+  try { await invoke("pause_all_downloads"); } catch (err) { console.error(err); }
+});
+
+$("#batch-clear-btn").addEventListener("click", async () => {
+  try {
+    await invoke("clear_completed_downloads");
+    const existing = await invoke("list_downloads");
+    items = {};
+    for (const it of existing) items[it.id] = it;
+    render();
+  } catch (err) { console.error(err); }
+});
+
 
 let scannedItems = [];
 let currentFilter = "all";
@@ -422,7 +607,11 @@ async function syncSettings() {
     lang,
     defaultDir,
     port: serverStatus.port || 5741,
-    speedLimitKbps: parseInt($("#speed-limit-input").value || "0", 10) || 0
+    speedLimitKbps: parseInt($("#speed-limit-input").value || "0", 10) || 0,
+    maxConcurrentDownloads: appSettings.maxConcurrentDownloads,
+    clipboardMonitor: appSettings.clipboardMonitor,
+    playSound: appSettings.playSound,
+    autoShutdown: appSettings.autoShutdown,
   };
   try {
     await invoke("save_settings", { settings });
@@ -455,7 +644,191 @@ $("#speed-limit-input").addEventListener("input", () => {
   syncSettings();
 });
 
+$("#max-concurrent-select").addEventListener("change", (e) => {
+  const val = parseInt(e.target.value, 10) || 3;
+  appSettings.maxConcurrentDownloads = val;
+  invoke("set_max_concurrent", { max: val }).catch(console.error);
+  syncSettings();
+});
+
+$("#clip-monitor-chk").addEventListener("change", (e) => {
+  appSettings.clipboardMonitor = e.target.checked;
+  syncSettings();
+});
+
+$("#sound-chk").addEventListener("change", (e) => {
+  appSettings.playSound = e.target.checked;
+  syncSettings();
+});
+
+$("#queue-auto-shutdown-chk").addEventListener("change", (e) => {
+  appSettings.autoShutdown = e.target.checked;
+  syncSettings();
+});
+
 $("#open-dir-btn").addEventListener("click", () => invoke("open_folder", { path: defaultDir }));
+
+// --- Checksum Verifier Modal ---
+let currentHashItem = null;
+let currentHashAlgo = "sha256";
+
+async function openHashModal(item) {
+  currentHashItem = item;
+  currentHashAlgo = "sha256";
+  $("#hash-file-name").textContent = item.filename || item.url;
+  $("#hash-sha256-btn").classList.add("active");
+  $("#hash-md5-btn").classList.remove("active");
+  $("#hash-compare-input").value = "";
+  $("#hash-match-status").textContent = "";
+  $("#hash-result-input").value = I18N[lang].calculating || "Calculating...";
+  $("#hash-modal").classList.remove("hidden");
+  await updateHashCalculation();
+}
+
+async function updateHashCalculation() {
+  if (!currentHashItem) return;
+  try {
+    const res = await invoke("calculate_hash", { path: currentHashItem.path, algorithm: currentHashAlgo });
+    $("#hash-result-input").value = res;
+    checkHashMatch();
+  } catch (err) {
+    $("#hash-result-input").value = "Error: " + err;
+  }
+}
+
+function checkHashMatch() {
+  const expected = $("#hash-compare-input").value.trim().toLowerCase();
+  const computed = $("#hash-result-input").value.trim().toLowerCase();
+  const statusEl = $("#hash-match-status");
+  if (!expected) {
+    statusEl.textContent = "";
+    return;
+  }
+  if (expected === computed) {
+    statusEl.textContent = I18N[lang].hash_matches;
+    statusEl.style.color = "var(--ok)";
+  } else {
+    statusEl.textContent = I18N[lang].hash_mismatch;
+    statusEl.style.color = "var(--err)";
+  }
+}
+
+$("#hash-sha256-btn").addEventListener("click", () => {
+  if (currentHashAlgo === "sha256") return;
+  currentHashAlgo = "sha256";
+  $("#hash-sha256-btn").classList.add("active");
+  $("#hash-md5-btn").classList.remove("active");
+  updateHashCalculation();
+});
+
+$("#hash-md5-btn").addEventListener("click", () => {
+  if (currentHashAlgo === "md5") return;
+  currentHashAlgo = "md5";
+  $("#hash-md5-btn").classList.add("active");
+  $("#hash-sha256-btn").classList.remove("active");
+  updateHashCalculation();
+});
+
+$("#hash-compare-input").addEventListener("input", checkHashMatch);
+
+$("#copy-hash-btn").addEventListener("click", async () => {
+  const text = $("#hash-result-input").value;
+  if (!text || text.startsWith("Error")) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = $("#copy-hash-btn").textContent;
+    $("#copy-hash-btn").textContent = I18N[lang].copied;
+    setTimeout(() => { $("#copy-hash-btn").textContent = orig; }, 1800);
+  } catch (e) {
+    console.error("Clipboard copy failed", e);
+  }
+});
+
+$("#close-hash-modal-btn").addEventListener("click", () => {
+  $("#hash-modal").classList.add("hidden");
+  currentHashItem = null;
+});
+
+// --- Auto-Shutdown Handler ---
+let shutdownInterval = null;
+
+listen("queue-finished", () => {
+  if (!appSettings.autoShutdown) return;
+  let seconds = 30;
+  $("#shutdown-timer").textContent = `${seconds}s`;
+  $("#shutdown-modal").classList.remove("hidden");
+  if (shutdownInterval) clearInterval(shutdownInterval);
+  shutdownInterval = setInterval(async () => {
+    seconds--;
+    $("#shutdown-timer").textContent = `${seconds}s`;
+    if (seconds <= 0) {
+      clearInterval(shutdownInterval);
+      shutdownInterval = null;
+      try {
+        await invoke("shutdown_computer");
+      } catch (err) {
+        console.error("Shutdown call failed", err);
+      }
+    }
+  }, 1000);
+});
+
+$("#abort-shutdown-btn").addEventListener("click", async () => {
+  if (shutdownInterval) {
+    clearInterval(shutdownInterval);
+    shutdownInterval = null;
+  }
+  $("#shutdown-modal").classList.add("hidden");
+  try {
+    await invoke("abort_shutdown");
+  } catch (err) {
+    console.error("Abort shutdown failed", err);
+  }
+});
+
+// --- Clipboard URL Monitor ---
+let lastClipboardText = "";
+let clipboardToastTimer = null;
+
+async function pollClipboard() {
+  if (!appSettings.clipboardMonitor) return;
+  if (!document.hasFocus()) return;
+  try {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (!text || text === lastClipboardText) return;
+    if (/^https?:\/\/[^\s]+$/i.test(text)) {
+      const isMedia = /\.(mp4|mkv|avi|mov|webm|ts|m3u8|mp3|flac|wav|zip|rar|7z|tar|gz|iso|pdf|exe|msi|apk)(\?.*)?$/i.test(text);
+      if (isMedia) {
+        lastClipboardText = text;
+        $("#clipboard-url-text").textContent = text;
+        $("#clipboard-toast").classList.remove("hidden");
+        if (clipboardToastTimer) clearTimeout(clipboardToastTimer);
+        clipboardToastTimer = setTimeout(() => {
+          $("#clipboard-toast").classList.add("hidden");
+        }, 12000);
+      }
+    }
+  } catch {}
+}
+setInterval(pollClipboard, 2500);
+
+$("#clipboard-dl-btn").addEventListener("click", async () => {
+  const url = $("#clipboard-url-text").textContent.trim();
+  $("#clipboard-toast").classList.add("hidden");
+  if (url) {
+    try {
+      const item = await invoke("add_download", { url, directory: defaultDir, scheduledAt: null });
+      items[item.id] = item;
+      render();
+    } catch (err) {
+      alert(String(err));
+    }
+  }
+});
+
+$("#clipboard-dismiss-btn").addEventListener("click", () => {
+  $("#clipboard-toast").classList.add("hidden");
+});
 
 // Drag and drop link onto window to start download
 window.addEventListener("dragover", (e) => {
@@ -510,6 +883,10 @@ $("#receiver-toggle-btn").addEventListener("click", async () => {
 });
 
 listen("download-update", (ev) => {
+  const prev = items[ev.payload.id];
+  if (prev && prev.status !== "completed" && ev.payload.status === "completed") {
+    playCompletionChime();
+  }
   items[ev.payload.id] = ev.payload;
   render();
 });
@@ -525,6 +902,22 @@ listen("download-update", (ev) => {
         $("#speed-limit-input").value = saved.speedLimitKbps;
       }
       if (saved.port) serverStatus.port = saved.port;
+      if (saved.maxConcurrentDownloads !== undefined) {
+        appSettings.maxConcurrentDownloads = saved.maxConcurrentDownloads;
+        $("#max-concurrent-select").value = String(saved.maxConcurrentDownloads);
+      }
+      if (saved.clipboardMonitor !== undefined) {
+        appSettings.clipboardMonitor = saved.clipboardMonitor;
+        $("#clip-monitor-chk").checked = saved.clipboardMonitor;
+      }
+      if (saved.playSound !== undefined) {
+        appSettings.playSound = saved.playSound;
+        $("#sound-chk").checked = saved.playSound;
+      }
+      if (saved.autoShutdown !== undefined) {
+        appSettings.autoShutdown = saved.autoShutdown;
+        $("#queue-auto-shutdown-chk").checked = saved.autoShutdown;
+      }
     }
   } catch (e) {
     console.error("Could not load settings", e);

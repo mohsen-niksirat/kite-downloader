@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use crate::DownloadItem;
 
+fn default_max_concurrent() -> usize { 3 }
+fn default_true() -> bool { true }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -11,6 +14,14 @@ pub struct AppSettings {
     pub default_dir: String,
     pub port: u16,
     pub speed_limit_kbps: u64,
+    #[serde(default = "default_max_concurrent")]
+    pub max_concurrent_downloads: usize,
+    #[serde(default = "default_true")]
+    pub clipboard_monitor: bool,
+    #[serde(default = "default_true")]
+    pub play_sound: bool,
+    #[serde(default)]
+    pub auto_shutdown: bool,
 }
 
 impl Default for AppSettings {
@@ -21,6 +32,10 @@ impl Default for AppSettings {
             default_dir: crate::default_dir().to_string_lossy().to_string(),
             port: 5741,
             speed_limit_kbps: 0,
+            max_concurrent_downloads: 3,
+            clipboard_monitor: true,
+            play_sound: true,
+            auto_shutdown: false,
         }
     }
 }

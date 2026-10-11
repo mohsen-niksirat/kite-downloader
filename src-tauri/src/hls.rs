@@ -343,4 +343,6 @@ pub async fn run_hls_download(
         crate::storage::save_history(&items);
         let _ = app.emit("download-update", &item);
     }
+
+    tauri::async_runtime::spawn(crate::trigger_next_queued(app.clone()));
 }

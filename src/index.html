@@ -157,6 +157,35 @@ select {
 .scan-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scan-item-url { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 9px; }
+.category-bar {
+  display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px 8px; margin-bottom: 8px; scrollbar-width: none;
+}
+.category-bar::-webkit-scrollbar { display: none; }
+.cat-pill {
+  display: flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 99px;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--muted);
+  font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: all .15s;
+}
+.cat-pill:hover { border-color: var(--accent); color: var(--text); }
+.cat-pill.active {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent); color: var(--accent2); font-weight: 600;
+}
+.cat-badge {
+  background: rgba(255,255,255,0.1); border-radius: 10px; padding: 1px 6px; font-size: 10px;
+}
+.clipboard-toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  background: var(--glass); backdrop-filter: blur(24px); border: 1px solid var(--border);
+  padding: 12px 16px; border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+  animation: slideUp .3s ease-out; transition: all .3s;
+}
+[dir="rtl"] .clipboard-toast { right: auto; left: 24px; }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 </style>
 </head>
 <body>
@@ -196,11 +225,35 @@ select {
           <button class="btn" id="scan-btn">🔍 <span data-i18n="btn_scan">Scan</span></button>
         </div>
       </div>
-      <div class="toolbar">
+      <div class="category-bar">
+        <button class="cat-pill active" data-cat="all"><span data-i18n="cat_all">All</span> <span class="cat-badge" id="cat-count-all">0</span></button>
+        <button class="cat-pill" data-cat="video">🎬 <span data-i18n="cat_video">Video</span> <span class="cat-badge" id="cat-count-video">0</span></button>
+        <button class="cat-pill" data-cat="audio">🎵 <span data-i18n="cat_audio">Audio</span> <span class="cat-badge" id="cat-count-audio">0</span></button>
+        <button class="cat-pill" data-cat="compressed">📦 <span data-i18n="cat_compressed">Compressed</span> <span class="cat-badge" id="cat-count-compressed">0</span></button>
+        <button class="cat-pill" data-cat="documents">📄 <span data-i18n="cat_documents">Documents</span> <span class="cat-badge" id="cat-count-documents">0</span></button>
+        <button class="cat-pill" data-cat="programs">💻 <span data-i18n="cat_programs">Programs</span> <span class="cat-badge" id="cat-count-programs">0</span></button>
+        <button class="cat-pill" data-cat="others">📁 <span data-i18n="cat_others">Others</span> <span class="cat-badge" id="cat-count-others">0</span></button>
+      </div>
+      <div class="toolbar" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; margin-bottom:6px;">
+        <div class="search-box" style="flex:1; min-width:180px; max-width:320px;">
+          <input type="text" id="search-input" data-i18n-ph="search_ph" placeholder="Search downloads..." style="width:100%; padding:7px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--text); font-size:13px; outline:none;" />
+        </div>
+        <div class="batch-actions" style="display:flex; gap:6px;">
+          <button class="btn ghost btn-sm" id="batch-resume-btn" title="Resume all downloads">▶ <span data-i18n="batch_resume">Resume All</span></button>
+          <button class="btn ghost btn-sm" id="batch-pause-btn" title="Pause all active downloads">⏸ <span data-i18n="batch_pause">Pause All</span></button>
+          <button class="btn ghost btn-sm" id="batch-clear-btn" title="Clear completed downloads from list">🧹 <span data-i18n="batch_clear">Clear Finished</span></button>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-top:0; margin-bottom:8px;">
         <div class="stats">
           <span id="stat-active"></span><span id="stat-done"></span><span id="stat-speed"></span>
         </div>
-        <button class="btn ghost" id="clear-btn">🧹 <span data-i18n="clear_list">Clear list</span></button>
+        <div style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="queue-auto-shutdown-chk" style="accent-color:var(--accent);" />
+            <span data-i18n="auto_shutdown_label">Shutdown PC when queue completes</span>
+          </label>
+        </div>
       </div>
       <div id="dl-list"></div>
       <div class="empty" id="empty-state">
@@ -236,6 +289,41 @@ select {
           <div style="display:flex; align-items:center; gap:8px">
             <input type="number" id="speed-limit-input" min="0" step="50" placeholder="0" style="width:110px; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--text); font-size:13px; outline:none; text-align:right" />
             <span style="font-size:13px; color:var(--muted)">KB/s</span>
+          </div>
+        </div>
+      </div>
+      <div class="glass-card">
+        <h2>🚦 <span data-i18n="max_concurrent_label">Queue & Concurrent Downloads</span></h2>
+        <div class="folder-row" style="justify-content:space-between">
+          <div>
+            <div style="font-size:14px; font-weight:600" data-i18n="max_concurrent_desc">Max active downloads at the same time (rest are queued)</div>
+          </div>
+          <select id="max-concurrent-select" style="width:120px; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--text); font-size:13px;">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="999">Unlimited</option>
+          </select>
+        </div>
+      </div>
+      <div class="glass-card">
+        <h2>🔔 <span data-i18n="automation_title">Automation & Notifications</span></h2>
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div class="folder-row" style="justify-content:space-between">
+            <div>
+              <div style="font-size:14px; font-weight:600" data-i18n="clip_monitor_label">Clipboard Link Monitor</div>
+              <div class="dl-meta" data-i18n="clip_monitor_desc">Auto-detect downloadable links copied to clipboard</div>
+            </div>
+            <input type="checkbox" id="clip-monitor-chk" checked style="accent-color:var(--accent); width:18px; height:18px;" />
+          </div>
+          <div class="folder-row" style="justify-content:space-between">
+            <div>
+              <div style="font-size:14px; font-weight:600" data-i18n="sound_label">Completion Sound</div>
+              <div class="dl-meta" data-i18n="sound_desc">Play audio chime when a download completes</div>
+            </div>
+            <input type="checkbox" id="sound-chk" checked style="accent-color:var(--accent); width:18px; height:18px;" />
           </div>
         </div>
       </div>
@@ -311,6 +399,56 @@ select {
       <button class="btn ghost" id="scan-cancel-btn" data-i18n="cancel">Cancel</button>
       <button class="btn" id="scan-download-btn">⬇ <span data-i18n="download_selected">Download Selected</span></button>
     </div>
+  </div>
+<!-- Checksum Modal -->
+<div id="hash-modal" class="modal-overlay hidden">
+  <div class="glass-card modal-card" style="max-width:540px;">
+    <div class="modal-head">
+      <h3 style="display:flex; align-items:center; gap:8px">🛡 <span data-i18n="hash_modal_title">File Checksum Verification</span></h3>
+      <button class="icon-btn" id="close-hash-modal-btn">✖</button>
+    </div>
+    <div style="margin: 10px 0 14px; font-size:13px; font-weight:600; color:var(--text); word-break:break-all;" id="hash-file-name"></div>
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      <button class="tab-pill active" id="hash-sha256-btn">SHA-256</button>
+      <button class="tab-pill" id="hash-md5-btn">MD5</button>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;" data-i18n="computed_hash">Calculated Hash:</label>
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="hash-result-input" readonly style="flex:1; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--accent2); font-family:monospace; font-size:12px; outline:none;" />
+        <button class="btn ghost btn-sm" id="copy-hash-btn" data-i18n="copy">Copy</button>
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;" data-i18n="compare_hash">Verify with expected hash (optional):</label>
+      <input type="text" id="hash-compare-input" placeholder="Paste expected hash to verify..." style="width:100%; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--text); font-family:monospace; font-size:12px; outline:none;" />
+      <div id="hash-match-status" style="margin-top:8px; font-size:12px; font-weight:600;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Auto-Shutdown Countdown Modal -->
+<div id="shutdown-modal" class="modal-overlay hidden">
+  <div class="glass-card modal-card" style="max-width:440px; text-align:center;">
+    <h2 style="color:var(--err)">⚠️ <span data-i18n="shutdown_title">Computer Shutdown</span></h2>
+    <p style="margin:12px 0; font-size:14px; color:var(--text);" data-i18n="shutdown_desc">All downloads finished. Your computer will shut down in:</p>
+    <div id="shutdown-timer" style="font-size:40px; font-weight:bold; color:var(--err); margin:12px 0;">30s</div>
+    <div style="display:flex; justify-content:center; gap:10px; margin-top:16px;">
+      <button class="btn" id="abort-shutdown-btn" style="background:var(--err); color:#fff;" data-i18n="abort_shutdown">Abort Shutdown</button>
+    </div>
+  </div>
+</div>
+
+<!-- Clipboard Toast -->
+<div id="clipboard-toast" class="clipboard-toast hidden">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <span style="font-size:22px;">📋</span>
+    <div style="flex:1; min-width:0;">
+      <div style="font-size:12px; font-weight:600;" data-i18n="clip_detected">Download link in clipboard</div>
+      <div id="clipboard-url-text" style="font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;"></div>
+    </div>
+    <button class="btn btn-sm" id="clipboard-dl-btn" data-i18n="start">Download</button>
+    <button class="icon-btn" id="clipboard-dismiss-btn" style="font-size:12px; padding:4px 6px;">✖</button>
   </div>
 </div>
 

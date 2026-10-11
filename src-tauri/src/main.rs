@@ -12,6 +12,7 @@ pub mod hls;
 pub mod server;
 pub mod scanner;
 pub mod storage;
+pub mod hash;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +38,7 @@ pub struct DownloadManager {
     pub controls: Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::mpsc::Sender<String>>>>,
     pub server: server::LinkServer,
     pub speed_limit_kbps: Arc<tokio::sync::RwLock<u64>>,
+    pub max_concurrent_downloads: Arc<tokio::sync::RwLock<usize>>,
     pub settings: Arc<tokio::sync::RwLock<storage::AppSettings>>,
 }
 
@@ -45,12 +47,14 @@ impl Default for DownloadManager {
         let saved_settings = storage::load_settings();
         let limit = saved_settings.speed_limit_kbps;
         let port = saved_settings.port;
+        let max_conc = saved_settings.max_concurrent_downloads;
         let history = storage::load_history();
         Self {
             items: Arc::new(tokio::sync::Mutex::new(history)),
             controls: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             server: server::LinkServer::new(port),
             speed_limit_kbps: Arc::new(tokio::sync::RwLock::new(limit)),
+            max_concurrent_downloads: Arc::new(tokio::sync::RwLock::new(max_conc)),
             settings: Arc::new(tokio::sync::RwLock::new(saved_settings)),
         }
     }
@@ -395,6 +399,57 @@ pub async fn run_download(app: AppHandle, mut item: DownloadItem, mut rx: tokio:
         storage::save_history(&items);
         let _ = app.emit("download-update", &item);
     }
+
+    tauri::async_runtime::spawn(trigger_next_queued(app.clone()));
+}
+
+pub fn trigger_next_queued(app: AppHandle) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+    Box::pin(async move {
+        let manager: State<DownloadManager> = app.state();
+        let max_concurrent = *manager.max_concurrent_downloads.read().await;
+
+        let next_item = {
+            let mut items = manager.items.lock().await;
+            let active_count = items.values().filter(|it| it.status == "downloading").count();
+            if active_count >= max_concurrent {
+                return;
+            }
+
+            let mut queued: Vec<_> = items.values().filter(|it| it.status == "queued").cloned().collect();
+            queued.sort_by(|a, b| a.id.cmp(&b.id));
+
+            if let Some(mut first) = queued.into_iter().next() {
+                first.status = "downloading".into();
+                first.error = None;
+                items.insert(first.id.clone(), first.clone());
+                storage::save_history(&items);
+                Some(first)
+            } else {
+                if active_count == 0 {
+                    let settings = manager.settings.read().await;
+                    if settings.auto_shutdown {
+                        let _ = app.emit("queue-finished", serde_json::json!({ "autoShutdown": true }));
+                        #[cfg(target_os = "windows")]
+                        { let _ = std::process::Command::new("shutdown").args(["/s", "/t", "30"]).spawn(); }
+                    } else {
+                        let _ = app.emit("queue-finished", serde_json::json!({ "autoShutdown": false }));
+                    }
+                }
+                None
+            }
+        };
+
+        if let Some(item_clone) = next_item {
+            let _ = app.emit("download-update", &item_clone);
+            let (tx, rx) = tokio::sync::mpsc::channel::<String>(8);
+            manager.controls.lock().await.insert(item_clone.id.clone(), tx);
+            if hls::is_hls_url(&item_clone.url) {
+                tauri::async_runtime::spawn(hls::run_hls_download(app.clone(), item_clone, rx));
+            } else {
+                tauri::async_runtime::spawn(run_download(app.clone(), item_clone, rx));
+            }
+        }
+    })
 }
 
 pub async fn add_download_core(
@@ -422,8 +477,7 @@ pub async fn add_download_core(
         scheduled_at: scheduled_at.clone(),
     };
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(8);
-    manager.controls.lock().await.insert(id, tx);
+    let (tx, rx) = tokio::sync::mpsc::channel::<String>(8);
 
     let is_scheduled = if let Some(ref sched_str) = scheduled_at {
         let now_sec = chrono::Utc::now().timestamp();
@@ -441,6 +495,7 @@ pub async fn add_download_core(
 
     if is_scheduled {
         item.status = "scheduled".into();
+        manager.controls.lock().await.insert(id.clone(), tx);
         {
             let mut items = manager.items.lock().await;
             items.insert(item.id.clone(), item.clone());
@@ -465,6 +520,7 @@ pub async fn add_download_core(
             let sleep_fut = tokio::time::sleep(tokio::time::Duration::from_secs(delay_sec));
             tokio::pin!(sleep_fut);
 
+            let mut rx = rx;
             tokio::select! {
                 _ = &mut sleep_fut => {
                     let mgr: State<DownloadManager> = app_clone.state();
@@ -477,11 +533,7 @@ pub async fn add_download_core(
                             it.status = "queued".into();
                         }
                     }
-                    if hls::is_hls_url(&item_clone.url) {
-                        tauri::async_runtime::spawn(hls::run_hls_download(app_clone, item_clone, rx));
-                    } else {
-                        tauri::async_runtime::spawn(run_download(app_clone, item_clone, rx));
-                    }
+                    tauri::async_runtime::spawn(trigger_next_queued(app_clone.clone()));
                 }
                 cmd = rx.recv() => {
                     match cmd.as_deref() {
@@ -500,11 +552,7 @@ pub async fn add_download_core(
                             }
                         }
                         Some("resume") => {
-                            if hls::is_hls_url(&item_clone.url) {
-                                tauri::async_runtime::spawn(hls::run_hls_download(app_clone, item_clone, rx));
-                            } else {
-                                tauri::async_runtime::spawn(run_download(app_clone, item_clone, rx));
-                            }
+                            tauri::async_runtime::spawn(trigger_next_queued(app_clone.clone()));
                         }
                         _ => {}
                     }
@@ -515,16 +563,34 @@ pub async fn add_download_core(
         return Ok(item);
     }
 
+    let max_concurrent = *manager.max_concurrent_downloads.read().await;
+    let should_start = {
+        let items = manager.items.lock().await;
+        let active_count = items.values().filter(|it| it.status == "downloading").count();
+        active_count < max_concurrent
+    };
+
+    if should_start {
+        item.status = "downloading".into();
+        manager.controls.lock().await.insert(id.clone(), tx);
+    } else {
+        item.status = "queued".into();
+    }
+
     {
         let mut items = manager.items.lock().await;
         items.insert(item.id.clone(), item.clone());
         storage::save_history(&items);
     }
 
-    if hls::is_hls_url(&item.url) {
-        tauri::async_runtime::spawn(hls::run_hls_download(app, item.clone(), rx));
-    } else {
-        tauri::async_runtime::spawn(run_download(app, item.clone(), rx));
+    let _ = app.emit("download-update", &item);
+
+    if should_start {
+        if hls::is_hls_url(&item.url) {
+            tauri::async_runtime::spawn(hls::run_hls_download(app, item.clone(), rx));
+        } else {
+            tauri::async_runtime::spawn(run_download(app, item.clone(), rx));
+        }
     }
     Ok(item)
 }
@@ -545,15 +611,42 @@ async fn add_download(
 #[tauri::command]
 async fn control_download(app: AppHandle, state: State<'_, DownloadManager>, id: String, action: String) -> Result<(), String> {
     let mut controls = state.controls.lock().await;
-    if let Some(tx) = controls.get(&id) {
-        tx.send(action).await.map_err(|_| "task ended".to_string())?;
-    } else if action == "resume" {
+    if let Some(tx) = controls.remove(&id) {
+        let _ = tx.send(action.clone()).await;
+        if action == "pause" || action == "cancel" {
+            let mut items = state.items.lock().await;
+            if let Some(item) = items.get_mut(&id) {
+                item.status = if action == "cancel" { "canceled".into() } else { "paused".into() };
+                item.speed_bps = 0;
+                let clone = item.clone();
+                storage::save_history(&items);
+                let _ = app.emit("download-update", &clone);
+            }
+            drop(items);
+            tauri::async_runtime::spawn(trigger_next_queued(app.clone()));
+        }
+    } else if action == "cancel" || action == "pause" {
         let mut items = state.items.lock().await;
+        if let Some(item) = items.get_mut(&id) {
+            item.status = if action == "cancel" { "canceled".into() } else { "paused".into() };
+            item.speed_bps = 0;
+            let clone = item.clone();
+            storage::save_history(&items);
+            let _ = app.emit("download-update", &clone);
+        }
+        drop(items);
+        tauri::async_runtime::spawn(trigger_next_queued(app.clone()));
+    } else if action == "resume" {
+        let max_concurrent = *state.max_concurrent_downloads.read().await;
+        let mut items = state.items.lock().await;
+        let active_count = items.values().filter(|it| it.status == "downloading").count();
+        let should_start = active_count < max_concurrent;
+
         let to_resume = if let Some(item) = items.get_mut(&id) {
             if item.status == "paused" || item.status == "error" || item.status == "canceled" || item.status == "scheduled" {
-                item.status = "downloading".into();
+                item.status = if should_start { "downloading".into() } else { "queued".into() };
                 item.error = None;
-                Some(item.clone())
+                Some((item.clone(), should_start))
             } else {
                 None
             }
@@ -561,16 +654,17 @@ async fn control_download(app: AppHandle, state: State<'_, DownloadManager>, id:
             None
         };
 
-        if let Some(item_clone) = to_resume {
-            let (tx, rx) = tokio::sync::mpsc::channel::<String>(8);
-            controls.insert(id.clone(), tx);
+        if let Some((item_clone, start_now)) = to_resume {
             storage::save_history(&items);
             let _ = app.emit("download-update", &item_clone);
-
-            if hls::is_hls_url(&item_clone.url) {
-                tauri::async_runtime::spawn(hls::run_hls_download(app, item_clone, rx));
-            } else {
-                tauri::async_runtime::spawn(run_download(app, item_clone, rx));
+            if start_now {
+                let (tx, rx) = tokio::sync::mpsc::channel::<String>(8);
+                controls.insert(id.clone(), tx);
+                if hls::is_hls_url(&item_clone.url) {
+                    tauri::async_runtime::spawn(hls::run_hls_download(app, item_clone, rx));
+                } else {
+                    tauri::async_runtime::spawn(run_download(app, item_clone, rx));
+                }
             }
             return Ok(());
         }
@@ -656,8 +750,126 @@ async fn get_settings(state: State<'_, DownloadManager>) -> Result<storage::AppS
 }
 
 #[tauri::command]
+async fn pause_all_downloads(app: AppHandle, state: State<'_, DownloadManager>) -> Result<(), String> {
+    let mut controls = state.controls.lock().await;
+    for tx in controls.values() {
+        let _ = tx.send("pause".to_string()).await;
+    }
+    controls.clear();
+    drop(controls);
+
+    let mut items = state.items.lock().await;
+    for it in items.values_mut() {
+        if it.status == "downloading" || it.status == "queued" {
+            it.status = "paused".into();
+            it.speed_bps = 0;
+            let _ = app.emit("download-update", &*it);
+        }
+    }
+    storage::save_history(&items);
+    Ok(())
+}
+
+#[tauri::command]
+async fn resume_all_downloads(app: AppHandle, state: State<'_, DownloadManager>) -> Result<(), String> {
+    {
+        let mut items = state.items.lock().await;
+        for it in items.values_mut() {
+            if it.status == "paused" || it.status == "error" || it.status == "canceled" {
+                it.status = "queued".into();
+                it.error = None;
+                let _ = app.emit("download-update", &*it);
+            }
+        }
+        storage::save_history(&items);
+    }
+    let max = *state.max_concurrent_downloads.read().await;
+    for _ in 0..max {
+        tauri::async_runtime::spawn(trigger_next_queued(app.clone()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn clear_completed_downloads(state: State<'_, DownloadManager>) -> Result<Vec<DownloadItem>, String> {
+    let mut items = state.items.lock().await;
+    items.retain(|_, it| it.status != "completed" && it.status != "canceled");
+    storage::save_history(&items);
+    let mut v: Vec<DownloadItem> = items.values().cloned().collect();
+    v.sort_by(|a, b| b.id.cmp(&a.id));
+    Ok(v)
+}
+
+#[tauri::command]
+fn open_file(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err("File does not exist".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd").args(["/C", "start", "", &path]).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(&path).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn calculate_hash(path: String, algorithm: Option<String>) -> Result<hash::ChecksumResult, String> {
+    let algo = algorithm.unwrap_or_else(|| "sha256".to_string());
+    tokio::task::spawn_blocking(move || {
+        hash::compute_checksum(&path, &algo)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn shutdown_computer() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("shutdown").args(["/s", "/t", "30"]).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("osascript").args(["-e", "tell app \"System Events\" to shut down"]).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("systemctl").arg("poweroff").spawn();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn abort_shutdown() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("shutdown").arg("/a").spawn();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_max_concurrent(state: State<'_, DownloadManager>, limit: usize) -> Result<(), String> {
+    *state.max_concurrent_downloads.write().await = limit;
+    let mut settings = state.settings.write().await;
+    settings.max_concurrent_downloads = limit;
+    storage::save_settings(&settings);
+    Ok(())
+}
+
+#[tauri::command]
 async fn save_settings(state: State<'_, DownloadManager>, settings: storage::AppSettings) -> Result<(), String> {
     *state.speed_limit_kbps.write().await = settings.speed_limit_kbps;
+    *state.max_concurrent_downloads.write().await = settings.max_concurrent_downloads;
     *state.settings.write().await = settings.clone();
     storage::save_settings(&settings);
     Ok(())
@@ -688,6 +900,7 @@ fn run() {
             list_downloads,
             remove_download,
             open_folder,
+            open_file,
             get_default_dir,
             format_bytes,
             get_server_status,
@@ -695,7 +908,14 @@ fn run() {
             scan_page,
             get_settings,
             save_settings,
-            set_speed_limit
+            set_speed_limit,
+            set_max_concurrent,
+            pause_all_downloads,
+            resume_all_downloads,
+            clear_completed_downloads,
+            calculate_hash,
+            shutdown_computer,
+            abort_shutdown
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

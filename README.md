@@ -6,6 +6,14 @@ A fast, lightweight download manager built with **Rust + Tauri v2** — native p
 
 ## ✨ Features
 
+- **Queue & Concurrency Limiting**: Configurable active download slots (1, 2, 3, 5, 10, or unlimited). Excess downloads are queued and auto-promoted upon item completion or pause.
+- **Smart Category Filtering**: Categorizes downloads into Video, Audio, Compressed, Documents, Programs, and Others with dynamic count badges.
+- **Instant Search**: Live search bar to filter downloads in real-time by filename or URL.
+- **Batch Controls**: Global "Resume All", "Pause All", and "Clear Finished" actions.
+- **Clipboard Link Sniffer**: Detects copied media & file links with a glassmorphism toast to trigger instant downloads.
+- **Checksum / Hash Verifier**: Calculate streaming SHA-256 and MD5 checksums on completed files with expected hash verification.
+- **Post-Download Actions & Auto-Shutdown**: Audio completion chimes (Web Audio API) and automatic PC shutdown countdown upon queue completion.
+- **Direct File Launching**: Open finished files directly in their default OS applications.
 - **Multi-connection HTTP/HTTPS downloads**: Automatic Range-based resume, pre-allocated files, and smart `Content-Disposition` filename detection.
 - **m3u8 / HLS stream support**: High-performance HLS pipeline with master playlist parsing (highest bandwidth variant selection), concurrent segment downloading (6 parallel streams), pause/cancel support, and automatic FFmpeg MP4 remuxing (with graceful fallback to `.ts`).
 - **Browser Extension (Manifest V3)**: Works on Chrome, Brave, Edge, and Firefox. Automatic media sniffing, toolbar badge counter, one-click "Send to Kite", and right-click context menu "Download with Kite".
@@ -14,7 +22,7 @@ A fast, lightweight download manager built with **Rust + Tauri v2** — native p
 - **Auto-retry with exponential backoff**: Recovers from mid-transfer network dropouts (up to 5 attempts) and resumes seamlessly from the last downloaded byte.
 - **Configurable speed limiter**: Paces downloads chunk-by-chunk using tokio intervals to keep bandwidth free for other applications.
 - **Drag-and-drop support**: Drag URLs directly into the Kite window to start or inspect downloads instantly.
-- **Persistence across restarts**: Download history and settings (theme, language, default directory, speed limits, receiver port) are automatically saved in the user's config directory (`dirs::config_dir()/kite`). Resumes paused downloads seamlessly.
+- **Persistence across restarts**: Download history and settings (theme, language, default directory, speed limits, receiver port, queue limits, automation toggles) are automatically saved in the user's config directory (`dirs::config_dir()/kite`). Resumes paused downloads seamlessly.
 - **Glassmorphism UI**: 6 customizable themes (Dark, Light, Ocean, Violet, Emerald, Rose) with smooth backdrop-filter blur.
 - **Multi-language (i18n)**: English, فارسی (RTL with Vazirmatn font), and Deutsch.
 - **Cross-platform**: Windows (NSIS installer), Linux (AppImage / deb).
@@ -53,12 +61,13 @@ Kite is designed with a lightweight vanilla frontend and a modular Rust backend 
 ```
 kite-downloader/
 ├── src/                      # Frontend (Vanilla JS + CSS, zero-bundler)
-│   ├── index.html            # Glassmorphism interface, tabs, and modals
+│   ├── index.html            # Glassmorphism interface, tabs, category pills, and modals
 │   ├── style.css             # CSS variables, 6 themes, RTL styles
-│   └── app.js                # Tauri IPC, i18n dictionary, event handlers
+│   └── app.js                # Tauri IPC, i18n dictionary, audio chime, event handlers
 ├── src-tauri/                 # Backend (Rust + Tauri v2)
 │   ├── src/
-│   │   ├── main.rs           # Entry point, download manager, speed limiter, IPC commands
+│   │   ├── main.rs           # Entry point, queue manager, concurrency limiter, IPC commands
+│   │   ├── hash.rs           # Streaming SHA-256 and MD5 checksum verifier
 │   │   ├── hls.rs            # m3u8 playlist parser, concurrent segment pipeline, remuxer
 │   │   ├── server.rs         # Local HTTP receiver for browser extension (tiny_http:5741)
 │   │   ├── scanner.rs        # Deep scan regex HTML parser for link discovery
@@ -83,6 +92,11 @@ kite-downloader/
 - [x] Deep scan (regex link scraper for page URLs & discovery modal)
 - [x] Scheduled downloads + auto-retry engine
 - [x] Speed limiter chunk pacing + URL drag-and-drop
+- [x] Queue concurrency limiter & auto-promotion
+- [x] Smart category filter & real-time search
+- [x] Checksum verifier (SHA-256 / MD5) & file launcher
+- [x] Clipboard link sniffer & audio notifications
+- [x] Automatic shutdown on queue completion
 - [x] History & settings persistence across restarts
 - [ ] BitTorrent download support
 
