@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kite Downloader</title>
+<style>
+:root {
+  --bg: #0d1117; --bg2: rgba(255,255,255,0.04); --card: rgba(255,255,255,0.06);
+  --glass: rgba(22,27,34,0.72); --text: #e6edf3; --muted: #8b949e;
+  --accent: #f97316; --accent2: #fb923c; --ok: #3fb950; --err: #f85149;
+  --border: rgba(255,255,255,0.12);
+}
+[data-theme="light"] {
+  --bg: #f2f4f8; --bg2: rgba(0,0,0,0.04); --card: rgba(255,255,255,0.6);
+  --glass: rgba(255,255,255,0.65); --text: #1f2328; --muted: #57606a;
+  --border: rgba(0,0,0,0.12);
+}
+[data-theme="ocean"] { --accent:#0ea5e9; --accent2:#38bdf8; }
+[data-theme="violet"] { --accent:#8b5cf6; --accent2:#a78bfa; }
+[data-theme="emerald"] { --accent:#10b981; --accent2:#34d399; }
+[data-theme="rose"] { --accent:#f43f5e; --accent2:#fb7185; }
+
+* { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+body {
+  font-family: 'Segoe UI', Vazirmatn, sans-serif;
+  background: radial-gradient(1200px 800px at 20% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent),
+              radial-gradient(1000px 700px at 110% 110%, color-mix(in srgb, var(--accent2) 10%, transparent), transparent),
+              var(--bg);
+  color: var(--text); height: 100vh; overflow: hidden; transition: background .4s;
+}
+.app { display:flex; height:100vh; }
+.sidebar {
+  width: 220px; padding: 20px 14px; display:flex; flex-direction:column; gap:6px;
+  background: var(--glass); backdrop-filter: blur(24px); border-right:1px solid var(--border);
+}
+.logo { display:flex; align-items:center; gap:10px; font-size:20px; font-weight:700; padding: 8px 10px 20px; }
+.logo .kite-ico { font-size: 26px; }
+.nav-btn {
+  display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:12px; cursor:pointer;
+  color: var(--muted); transition: all .2s; border:1px solid transparent; font-size:14px;
+}
+.nav-btn:hover { background: var(--bg2); color: var(--text); }
+.nav-btn.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.sidebar .spacer { flex:1; }
+.main { flex:1; padding: 26px 30px; overflow-y:auto; }
+.main::-webkit-scrollbar { width:8px; }
+.main::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+
+.glass-card {
+  background: var(--card); backdrop-filter: blur(20px); border:1px solid var(--border);
+  border-radius: 18px; padding: 20px; margin-bottom: 16px;
+}
+h2 { font-size:17px; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+.row { display:flex; gap:10px; }
+input[type=text] {
+  flex:1; padding:12px 14px; border-radius:12px; border:1px solid var(--border);
+  background: var(--bg2); color:var(--text); font-size:14px; outline:none; user-select:text;
+}
+input[type=text]:focus { border-color: var(--accent); }
+.btn {
+  padding:12px 20px; border-radius:12px; border:none; cursor:pointer; font-size:14px; font-weight:600;
+  background: linear-gradient(135deg, var(--accent), var(--accent2)); color:#fff;
+  transition: transform .15s, box-shadow .15s;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 40%, transparent); }
+.btn.ghost { background: var(--bg2); color: var(--text); border:1px solid var(--border); }
+
+.dl-item { margin-bottom:14px; }
+.dl-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.dl-name { font-weight:600; font-size:14px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dl-meta { font-size:12px; color:var(--muted); }
+.badge { font-size:11px; padding:3px 10px; border-radius:99px; font-weight:600; }
+.badge.downloading { background:color-mix(in srgb, var(--accent) 22%, transparent); color:var(--accent2); }
+.badge.completed { background:color-mix(in srgb, var(--ok) 20%, transparent); color:var(--ok); }
+.badge.paused { background:rgba(255,180,0,.15); color:#e3b341; }
+.badge.error { background:color-mix(in srgb, var(--err) 18%, transparent); color:var(--err); }
+.badge.queued { background:var(--bg2); color:var(--muted); }
+.progress-track { height:8px; border-radius:99px; background:var(--bg2); overflow:hidden; }
+.progress-fill { height:100%; border-radius:99px; background:linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s; }
+.dl-actions { display:flex; gap:6px; margin-top:8px; }
+.icon-btn {
+  width:32px; height:32px; border-radius:9px; border:1px solid var(--border); background:var(--bg2);
+  color:var(--text); cursor:pointer; font-size:14px; transition: all .2s; display:flex; align-items:center; justify-content:center;
+}
+.icon-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+.empty { text-align:center; padding:60px 20px; color:var(--muted); }
+.empty .big { font-size:52px; margin-bottom:14px; }
+
+.toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.stats { display:flex; gap:14px; font-size:13px; color:var(--muted); }
+select {
+  padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg2);
+  color:var(--text); font-size:13px; outline:none; cursor:pointer;
+}
+.hidden { display:none; }
+.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.about-body { line-height:1.9; color:var(--muted); font-size:14px; }
+.about-body a { color: var(--accent); text-decoration:none; }
+.folder-row { display:flex; gap:8px; align-items:center; }
+.folder-row input { flex:1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="logo"><span class="kite-ico">🪁</span> Kite</div>
+    <div class="nav-btn active" data-page="downloads">📥 <span data-i18n="nav_downloads">Downloads</span></div>
+    <div class="nav-btn" data-page="settings">⚙️ <span data-i18n="nav_settings">Settings</span></div>
+    <div class="nav-btn" data-page="about">ℹ️ <span data-i18n="nav_about">About</span></div>
+    <div class="spacer"></div>
+    <div class="nav-btn" id="theme-cycle">🎨 <span data-i18n="nav_theme">Theme</span></div>
+  </aside>
+  <main class="main">
+    <!-- Downloads page -->
+    <section id="page-downloads">
+      <div class="glass-card">
+        <h2>🔗 <span data-i18n="new_download">New Download</span></h2>
+        <div class="row">
+          <input type="text" id="url-input" data-i18n-ph="url_ph" placeholder="Paste a download link (https://... or m3u8)" />
+          <button class="btn" id="add-btn">⬇ <span data-i18n="start">Start</span></button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="stats">
+          <span id="stat-active"></span><span id="stat-done"></span><span id="stat-speed"></span>
+        </div>
+        <button class="btn ghost" id="clear-btn">🧹 <span data-i18n="clear_list">Clear list</span></button>
+      </div>
+      <div id="dl-list"></div>
+      <div class="empty" id="empty-state">
+        <div class="big">🪁</div>
+        <div data-i18n="empty_msg">No downloads yet. Paste a link above to get started!</div>
+      </div>
+    </section>
+    <!-- Settings page -->
+    <section id="page-settings" class="hidden">
+      <div class="glass-card">
+        <h2>💾 <span data-i18n="save_location">Save location</span></h2>
+        <div class="folder-row">
+          <input type="text" id="dir-input" />
+          <button class="btn ghost" id="open-dir-btn">📂 <span data-i18n="open_folder">Open</span></button>
+        </div>
+      </div>
+      <div class="glass-card">
+        <h2>🎨 <span data-i18n="appearance">Appearance</span></h2>
+        <div class="settings-grid">
+          <div>
+            <div class="dl-meta" style="margin-bottom:6px" data-i18n="theme_label">Theme</div>
+            <select id="theme-select">
+              <option value="dark">🌙 Dark</option>
+              <option value="light">☀️ Light</option>
+              <option value="ocean">🌊 Ocean</option>
+              <option value="violet">💜 Violet</option>
+              <option value="emerald">💚 Emerald</option>
+              <option value="rose">🌹 Rose</option>
+            </select>
+          </div>
+          <div>
+            <div class="dl-meta" style="margin-bottom:6px" data-i18n="lang_label">Language</div>
+            <select id="lang-select">
+              <option value="en">English</option>
+              <option value="fa">فارسی</option>
+              <option value="de">Deutsch</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- About page -->
+    <section id="page-about" class="hidden">
+      <div class="glass-card">
+        <h2>🪁 <span data-i18n="nav_about">About</span></h2>
+        <div class="about-body">
+          <p><b>Kite Downloader v0.1.0</b></p>
+          <p data-i18n="about_text">A fast, lightweight download manager built with Rust + Tauri. Native performance, tiny memory footprint, glassmorphism UI.</p>
+          <p>🔗 <a href="https://github.com/mohsen-niksirat/kite-downloader">github.com/mohsen-niksirat/kite-downloader</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
